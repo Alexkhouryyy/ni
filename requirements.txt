@@ -1,0 +1,12 @@
+anthropic>=0.40.0
+faster-whisper
+sounddevice
+numpy
+pyautogui
+mss
+Pillow
+beautifulsoup4
+ddgs
+python-dotenv
+pyttsx3
+requests
