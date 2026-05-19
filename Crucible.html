@@ -550,6 +550,98 @@
     .running { right: 12px; left: 12px; bottom: 12px; justify-content: space-between; }
   }
 
+  /* ───────── compare ───────── */
+  .compare { padding-top: 50px; padding-bottom: 140px; }
+  .compare .head { margin-bottom: 24px; }
+  .compare .eyebrow {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft); margin-bottom: 14px;
+  }
+  .compare h2 .vs { font-style: italic; color: var(--ink-soft); font-weight: 400; }
+
+  .legend {
+    display: flex; gap: 22px; margin: 10px 0 26px;
+    font-size: 13px; color: var(--ink-soft); flex-wrap: wrap;
+  }
+  .legend .item { display: inline-flex; align-items: center; gap: 8px; }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
+  .legend .swatch--a { background: var(--clay); }
+  .legend .swatch--b { background: var(--ok); }
+
+  .compare .twin {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 820px) {
+    .compare .twin { grid-template-columns: 1fr; gap: 18px; }
+  }
+  .compare .composite-panel .who {
+    font-family: var(--serif); font-size: 19px; line-height: 1.2;
+    color: var(--ink); margin-bottom: 6px;
+  }
+  .compare .composite-panel .who .sub-mark {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft); margin-left: 8px;
+  }
+  .compare .composite-panel.b .label-row .pip {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--ok);
+    display: inline-block; margin-right: 8px; transform: translateY(-1px);
+  }
+  .compare .composite-panel.a .label-row .pip {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--clay);
+    display: inline-block; margin-right: 8px; transform: translateY(-1px);
+  }
+  .compare .composite-panel .big { font-size: 92px; }
+  @media (max-width: 720px) {
+    .compare .composite-panel .big { font-size: 76px; }
+  }
+
+  .verdict-callout {
+    margin-top: 24px;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: var(--surface);
+    padding: 26px 28px;
+  }
+  .verdict-callout .sentence {
+    font-family: var(--serif); font-size: 22px; line-height: 1.4;
+    color: var(--ink); letter-spacing: -0.01em;
+  }
+  .verdict-callout .sentence strong { font-weight: 500; }
+  .verdict-callout .sentence .a-name { color: var(--clay); font-style: italic; font-weight: 500; }
+  .verdict-callout .sentence .b-name { color: var(--ok); font-style: italic; font-weight: 500; }
+
+  .bd-row.bd-row--compare {
+    grid-template-columns: 30px 1.4fr 50px 1fr 50px 80px;
+    gap: 16px;
+  }
+  .bd-row--compare .sc-a { font-family: var(--serif); font-size: 20px; color: var(--clay); text-align: right; }
+  .bd-row--compare .sc-b { font-family: var(--serif); font-size: 20px; color: var(--ok); text-align: left; }
+  .bd-row--compare .delta {
+    font-family: var(--serif); font-size: 14px; text-align: right;
+    color: var(--ink-soft);
+  }
+  .bd-row--compare .delta.is-leader-a { color: var(--clay); }
+  .bd-row--compare .delta.is-leader-b { color: var(--ok); }
+  .bd-row--compare .dual {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px; align-items: center;
+    height: 6px;
+  }
+  .bd-row--compare .dual .barwrap {
+    height: 6px; background: var(--paper); border-radius: 3px; overflow: hidden;
+    border: 1px solid var(--line);
+    display: flex;
+  }
+  .bd-row--compare .dual .barwrap--a > i { display: block; height: 100%; background: var(--clay); margin-left: auto; }
+  .bd-row--compare .dual .barwrap--b > i { display: block; height: 100%; background: var(--ok); }
+  .bd-row--compare.is-deciding .dim { font-style: italic; }
+  @media (max-width: 720px) {
+    .bd-row.bd-row--compare {
+      grid-template-columns: 24px 1fr 38px 38px 50px;
+      gap: 10px;
+    }
+    .bd-row--compare .dual { display: none; }
+  }
+
   /* ───────── print ───────── */
   @media print {
     @page { margin: 18mm 16mm; }
@@ -557,21 +649,25 @@
     .topbar, footer, .running, .report .footer-actions, .ai-note { display: none !important; }
     .screen { display: none !important; }
     .screen.is-on { display: block !important; }
-    .composite-panel, .radar-panel, .kill, .card { box-shadow: none !important; }
-    .composite-panel, .radar-panel, .kill {
+    .composite-panel, .radar-panel, .kill, .card, .verdict-callout { box-shadow: none !important; }
+    .composite-panel, .radar-panel, .kill, .verdict-callout {
       background: #fff; border: 1px solid #ccc;
     }
     .composite-panel .big { font-size: 84px; }
-    .top-grid { gap: 18px; }
-    .report { padding: 0; }
+    .compare .composite-panel .big { font-size: 64px; }
+    .top-grid, .compare .twin { gap: 18px; }
+    .report, .compare { padding: 0; }
     .bd-row { padding: 10px 0; }
     body { font-size: 13px; }
     h2 { font-size: 30px; }
     .kill .lhs .what { font-size: 24px; }
     .kill .rhs .sentence { font-size: 17px; }
+    .verdict-callout .sentence { font-size: 17px; }
     .breakdown { page-break-inside: avoid; }
     .kill { page-break-inside: avoid; }
     .top-grid { page-break-inside: avoid; }
+    .compare .twin { page-break-inside: avoid; }
+    .verdict-callout { page-break-inside: avoid; }
   }
 </style>
 </head>
@@ -585,6 +681,7 @@
     <span data-step="landing" class="is-active">01 Idea</span>
     <span data-step="diag">02 Diagnostic</span>
     <span data-step="report">03 Verdict</span>
+    <span data-step="compare" id="step-compare" hidden>04 Compare</span>
   </nav>
 </header>
 
@@ -729,7 +826,64 @@
         <button class="btn" id="copy-summary">Copy shareable summary</button>
         <button class="btn btn-ghost" id="print-report">Print / Save as PDF</button>
         <span class="copied" id="copied-flag">Copied to clipboard.</span>
-        <button class="btn btn-ghost restart" id="restart">Score another idea</button>
+        <div class="restart" id="report-restart-slot">
+          <button class="btn btn-ghost" id="restart">Score another to compare</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── COMPARE ─────────── -->
+  <section class="screen" id="screen-compare">
+    <div class="compare wrap">
+      <div class="head">
+        <div class="eyebrow">Step 04 — Compare</div>
+        <h2><span id="cmp-name-a">Idea A</span> <span class="vs">vs</span> <span id="cmp-name-b">Idea B</span>.</h2>
+      </div>
+
+      <div class="legend" aria-hidden="true">
+        <span class="item"><span class="swatch swatch--a"></span><span id="legend-a">Idea A</span></span>
+        <span class="item"><span class="swatch swatch--b"></span><span id="legend-b">Idea B</span></span>
+      </div>
+
+      <div class="twin">
+        <div class="composite-panel a">
+          <div class="label-row label"><span class="pip"></span><span id="cmp-who-a">Idea A</span></div>
+          <div class="big"><span id="cmp-composite-a">0</span><span class="of">/100</span></div>
+          <div class="verdict" id="cmp-verdict-a">
+            <span class="pip"></span><span class="name" id="cmp-verdict-name-a">—</span>
+          </div>
+          <p class="blurb" id="cmp-verdict-blurb-a"></p>
+        </div>
+        <div class="composite-panel b">
+          <div class="label-row label"><span class="pip"></span><span id="cmp-who-b">Idea B</span></div>
+          <div class="big"><span id="cmp-composite-b">0</span><span class="of">/100</span></div>
+          <div class="verdict" id="cmp-verdict-b">
+            <span class="pip"></span><span class="name" id="cmp-verdict-name-b">—</span>
+          </div>
+          <p class="blurb" id="cmp-verdict-blurb-b"></p>
+        </div>
+      </div>
+
+      <div class="radar-panel">
+        <svg id="cmp-radar" viewBox="0 0 400 400" role="img" aria-label="comparison radar chart"></svg>
+      </div>
+
+      <div class="verdict-callout">
+        <p class="sentence" id="cmp-sentence"></p>
+      </div>
+
+      <div class="breakdown">
+        <h3>Per-axis comparison</h3>
+        <div id="cmp-breakdown"></div>
+      </div>
+
+      <div class="footer-actions">
+        <button class="btn" id="cmp-copy">Copy comparison summary</button>
+        <button class="btn btn-ghost" id="cmp-print">Print / Save as PDF</button>
+        <span class="copied" id="cmp-copied-flag">Copied to clipboard.</span>
+        <button class="btn btn-ghost restart" id="cmp-replace">Score yet another idea</button>
+        <button class="btn btn-ghost" id="cmp-discard">Discard archive</button>
       </div>
     </div>
   </section>
@@ -843,29 +997,35 @@
   ];
 
   // ─────────── state ───────────
+  function blankIdea() {
+    return {
+      idea: { name: '', desc: '' },
+      scores: Object.fromEntries(DIMENSIONS.map(d => [d.key, 0])),
+      notes:  Object.fromEntries(DIMENSIONS.map(d => [d.key, '']))
+    };
+  }
   const state = {
     screen: 'landing',
-    idea: { name: '', desc: '' },
-    aiOn: false,
-    scores: Object.fromEntries(DIMENSIONS.map(d => [d.key, 0])),
-    notes:  Object.fromEntries(DIMENSIONS.map(d => [d.key, '']))
+    active: blankIdea(),
+    archive: [],   // at most one prior idea (cap = 1 for v1)
+    aiOn: false
   };
 
   // ─────────── helpers ───────────
   const $ = sel => document.querySelector(sel);
   const $$ = sel => Array.from(document.querySelectorAll(sel));
 
-  function compositeNow() {
+  function composite(scores) {
     let sum = 0;
     for (const d of DIMENSIONS) {
-      sum += (state.scores[d.key] / 5) * d.weight;
+      sum += (scores[d.key] / 5) * d.weight;
     }
     return Math.round(sum * 100);
   }
-  function killRisk() {
+  function killRisk(scores) {
     let worst = null, gap = -1;
     for (const d of DIMENSIONS) {
-      const g = d.weight * (5 - state.scores[d.key]);
+      const g = d.weight * (5 - scores[d.key]);
       if (g > gap) { gap = g; worst = d; }
     }
     return { dim: worst, gap };
@@ -873,18 +1033,21 @@
   function verdictFor(score) {
     return VERDICTS.find(v => score >= v.min && score <= v.max) || VERDICTS[0];
   }
+  function ideaLabel(rec, fallback) {
+    return (rec && rec.idea && rec.idea.name) ? rec.idea.name : fallback;
+  }
 
   // ─────────── screen routing ───────────
   function go(name) {
     state.screen = name;
     $$('.screen').forEach(s => s.classList.remove('is-on'));
     $('#screen-' + name).classList.add('is-on');
-    $$('.steps span').forEach(s => s.classList.toggle('is-active',
-      (name === 'landing' && s.dataset.step === 'landing') ||
-      (name === 'intake'  && s.dataset.step === 'landing') ||
-      (name === 'diag'    && s.dataset.step === 'diag')    ||
-      (name === 'report'  && s.dataset.step === 'report')
-    ));
+    const stepFor = {
+      landing: 'landing', intake: 'landing', diag: 'diag',
+      report: 'report', compare: 'compare'
+    };
+    $$('.steps span').forEach(s => s.classList.toggle('is-active', s.dataset.step === stepFor[name]));
+    $('#step-compare').hidden = state.archive.length === 0 && name !== 'compare';
     $('#running').classList.toggle('is-on', name === 'diag');
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
   }
@@ -904,6 +1067,7 @@
   // ─────────── diagnostic cards ───────────
   function renderCards() {
     const wrap = $('#cards');
+    const scores = state.active.scores, notes = state.active.notes;
     wrap.innerHTML = DIMENSIONS.map((d, i) => `
       <article class="card" style="animation-delay:${i * 80}ms" data-key="${d.key}">
         <div class="top">
@@ -926,14 +1090,14 @@
         <div class="slider-row">
           <div class="slider-wrap">
             <div class="ticks"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
-            <input type="range" min="0" max="5" step="1" value="${state.scores[d.key]}" class="slider" data-key="${d.key}" aria-label="${d.name} score" />
+            <input type="range" min="0" max="5" step="1" value="${scores[d.key]}" class="slider" data-key="${d.key}" aria-label="${d.name} score" />
           </div>
-          <div class="score-display"><span data-score-for="${d.key}">${state.scores[d.key]}</span><span class="of">/5</span></div>
+          <div class="score-display"><span data-score-for="${d.key}">${scores[d.key]}</span><span class="of">/5</span></div>
         </div>
 
         <div class="note-field">
           <label for="note-${d.key}">Note</label>
-          <input id="note-${d.key}" type="text" placeholder="One line — evidence, source, doubt." data-note="${d.key}" value="${state.notes[d.key] || ''}" />
+          <input id="note-${d.key}" type="text" placeholder="One line — evidence, source, doubt." data-note="${d.key}" value="${notes[d.key] || ''}" />
         </div>
       </article>
     `).join('');
@@ -943,24 +1107,26 @@
       s.addEventListener('input', e => {
         const k = e.target.dataset.key;
         const v = parseInt(e.target.value, 10);
-        state.scores[k] = v;
+        state.active.scores[k] = v;
         document.querySelector(`[data-score-for="${k}"]`).textContent = v;
-        $('#running-val').textContent = compositeNow();
+        $('#running-val').textContent = composite(state.active.scores);
       });
     });
     $$('[data-note]').forEach(n => {
       n.addEventListener('input', e => {
-        state.notes[e.target.dataset.note] = e.target.value;
+        state.active.notes[e.target.dataset.note] = e.target.value;
       });
     });
   }
 
   // ─────────── radar SVG ───────────
-  function renderRadar() {
-    const svg = $('#radar');
+  // series: array of { scores, stroke, fill, dotR }; renders each polygon overlaid.
+  function renderRadar(svg, series, opts) {
+    opts = opts || {};
     const size = 400, cx = size / 2, cy = size / 2;
     const r = 140;
     const n = DIMENSIONS.length;
+    const showScoreLabels = opts.showScoreLabels !== false && series.length === 1;
 
     let html = '';
 
@@ -983,22 +1149,23 @@
       html += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
     }
 
-    // data polygon
-    const dpts = [];
-    for (let i = 0; i < n; i++) {
-      const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-      const v = state.scores[DIMENSIONS[i].key] / 5;
-      dpts.push((cx + r * v * Math.cos(a)).toFixed(1) + ',' + (cy + r * v * Math.sin(a)).toFixed(1));
-    }
-    html += `<polygon points="${dpts.join(' ')}" fill="rgba(217,119,87,0.12)" stroke="var(--clay)" stroke-width="1.5" stroke-linejoin="round"/>`;
-
-    // data points
-    for (let i = 0; i < n; i++) {
-      const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-      const v = state.scores[DIMENSIONS[i].key] / 5;
-      const x = cx + r * v * Math.cos(a);
-      const y = cy + r * v * Math.sin(a);
-      html += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--clay)"/>`;
+    // data polygons (one per series)
+    for (const s of series) {
+      const dpts = [];
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        const v = s.scores[DIMENSIONS[i].key] / 5;
+        dpts.push((cx + r * v * Math.cos(a)).toFixed(1) + ',' + (cy + r * v * Math.sin(a)).toFixed(1));
+      }
+      html += `<polygon points="${dpts.join(' ')}" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.5" stroke-linejoin="round"/>`;
+      // data points
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        const v = s.scores[DIMENSIONS[i].key] / 5;
+        const x = cx + r * v * Math.cos(a);
+        const y = cy + r * v * Math.sin(a);
+        html += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${s.dotR || 3}" fill="${s.stroke}"/>`;
+      }
     }
 
     // labels
@@ -1013,10 +1180,11 @@
       else if (cosA < -0.15) anchor = 'end';
       const lbl = DIMENSIONS[i].name.replace(' & ', ' &amp; ');
       html += `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="${anchor}" font-family="Newsreader, serif" font-size="13" fill="var(--ink)">${lbl}</text>`;
-      // score under label
-      const sx = cx + (lr + 0) * Math.cos(a);
-      const sy = cy + (lr + 0) * Math.sin(a);
-      html += `<text x="${sx.toFixed(1)}" y="${(sy + 20).toFixed(1)}" text-anchor="${anchor}" font-family="Newsreader, serif" font-size="11" fill="var(--ink-soft)">${state.scores[DIMENSIONS[i].key]}/5</text>`;
+      if (showScoreLabels) {
+        const sx = cx + lr * Math.cos(a);
+        const sy = cy + lr * Math.sin(a);
+        html += `<text x="${sx.toFixed(1)}" y="${(sy + 20).toFixed(1)}" text-anchor="${anchor}" font-family="Newsreader, serif" font-size="11" fill="var(--ink-soft)">${series[0].scores[DIMENSIONS[i].key]}/5</text>`;
+      }
     }
 
     svg.innerHTML = html;
@@ -1024,21 +1192,22 @@
 
   // ─────────── report ───────────
   function renderReport() {
-    const composite = compositeNow();
-    const verdict = verdictFor(composite);
-    const kill = killRisk();
+    const scores = state.active.scores;
+    const score = composite(scores);
+    const verdict = verdictFor(score);
+    const kill = killRisk(scores);
 
-    $('#report-heading').innerHTML = `<span class="name-em">${escapeHtml(state.idea.name || 'Untitled idea')}</span>`;
-    $('#report-desc').textContent = state.idea.desc || '';
+    $('#report-heading').innerHTML = `<span class="name-em">${escapeHtml(state.active.idea.name || 'Untitled idea')}</span>`;
+    $('#report-desc').textContent = state.active.idea.desc || '';
 
-    $('#composite-val').textContent = composite;
+    $('#composite-val').textContent = score;
     const vEl = $('#verdict');
     vEl.className = 'verdict ' + verdict.cls;
     $('#verdict-name').textContent = verdict.name;
     $('#verdict-blurb').textContent = verdict.blurb;
 
     $('#kill-name').textContent = kill.dim.name;
-    $('#kill-gap').textContent = `Weighted gap: ${(kill.gap).toFixed(2)} · weight ${kill.dim.weight.toFixed(2)} · score ${state.scores[kill.dim.key]}/5`;
+    $('#kill-gap').textContent = `Weighted gap: ${(kill.gap).toFixed(2)} · weight ${kill.dim.weight.toFixed(2)} · score ${scores[kill.dim.key]}/5`;
     $('#kill-sentence').innerHTML = kill.dim.survives.replace(
       /survives only if/i,
       m => `<span class="accent">${m}</span>`
@@ -1047,7 +1216,7 @@
     // breakdown
     const bd = $('#breakdown');
     bd.innerHTML = DIMENSIONS.map((d, i) => {
-      const sc = state.scores[d.key];
+      const sc = scores[d.key];
       const isKill = d.key === kill.dim.key;
       const contrib = ((sc / 5) * d.weight * 100).toFixed(1);
       return `
@@ -1062,7 +1231,175 @@
       `;
     }).join('');
 
-    renderRadar();
+    renderRadar($('#radar'), [{
+      scores,
+      stroke: 'var(--clay)',
+      fill: 'rgba(217,119,87,0.12)'
+    }]);
+
+    // footer-action slot: depends on whether there's an archived idea
+    renderReportRestartSlot();
+  }
+
+  function renderReportRestartSlot() {
+    const slot = $('#report-restart-slot');
+    if (state.archive.length === 0) {
+      slot.innerHTML = `<button class="btn btn-ghost" id="restart">Score another to compare</button>`;
+      $('#restart').addEventListener('click', archiveAndRestart);
+    } else {
+      slot.innerHTML = `
+        <button class="btn" id="goto-compare">Compare both <span class="arr">→</span></button>
+        <button class="btn btn-ghost" id="discard-prev">Discard previous, score new</button>
+      `;
+      $('#goto-compare').addEventListener('click', () => {
+        renderCompare();
+        go('compare');
+      });
+      $('#discard-prev').addEventListener('click', () => {
+        state.archive = [];
+        state.active = blankIdea();
+        $('#idea-name').value = '';
+        $('#idea-desc').value = '';
+        go('intake');
+      });
+    }
+  }
+
+  function archiveAndRestart() {
+    // snapshot active into archive (cap = 1; newer pushes evict older)
+    state.archive = [snapshotActive()];
+    state.active = blankIdea();
+    $('#idea-name').value = '';
+    $('#idea-desc').value = '';
+    go('intake');
+  }
+
+  function snapshotActive() {
+    return {
+      idea: { name: state.active.idea.name, desc: state.active.idea.desc },
+      scores: { ...state.active.scores },
+      notes:  { ...state.active.notes }
+    };
+  }
+
+  // ─────────── compare screen ───────────
+  function renderCompare() {
+    if (state.archive.length === 0) return;
+    const A = state.archive[0];
+    const B = snapshotActive();
+    const aName = ideaLabel(A, 'Untitled idea A');
+    const bName = ideaLabel(B, 'Untitled idea B');
+    const cA = composite(A.scores);
+    const cB = composite(B.scores);
+    const vA = verdictFor(cA);
+    const vB = verdictFor(cB);
+
+    $('#cmp-name-a').textContent = aName;
+    $('#cmp-name-b').textContent = bName;
+    $('#legend-a').textContent = aName;
+    $('#legend-b').textContent = bName;
+    $('#cmp-who-a').textContent = aName;
+    $('#cmp-who-b').textContent = bName;
+
+    $('#cmp-composite-a').textContent = cA;
+    $('#cmp-composite-b').textContent = cB;
+    $('#cmp-verdict-a').className = 'verdict ' + vA.cls;
+    $('#cmp-verdict-b').className = 'verdict ' + vB.cls;
+    $('#cmp-verdict-name-a').textContent = vA.name;
+    $('#cmp-verdict-name-b').textContent = vB.name;
+    $('#cmp-verdict-blurb-a').textContent = vA.blurb;
+    $('#cmp-verdict-blurb-b').textContent = vB.blurb;
+
+    // dual radar
+    renderRadar($('#cmp-radar'), [
+      { scores: A.scores, stroke: 'var(--clay)', fill: 'rgba(217,119,87,0.12)' },
+      { scores: B.scores, stroke: 'var(--ok)',   fill: 'rgba(91,123,91,0.14)' }
+    ]);
+
+    // deciding axis: dimension with the largest absolute score delta;
+    // tie-break by heavier weight, then by alphabetical key for determinism.
+    let deciding = null, deltaAbs = -1;
+    for (const d of DIMENSIONS) {
+      const da = Math.abs(A.scores[d.key] - B.scores[d.key]);
+      if (da > deltaAbs ||
+         (da === deltaAbs && deciding && d.weight > deciding.weight)) {
+        deltaAbs = da; deciding = d;
+      }
+    }
+    const decidingDelta = (B.scores[deciding.key] - A.scores[deciding.key]); // +ve = B leads
+    const leader = cA === cB ? 'tie' : (cA > cB ? 'a' : 'b');
+
+    let sentence;
+    if (leader === 'tie') {
+      if (deltaAbs === 0) {
+        sentence = `Composites are tied at <strong>${cA}/100</strong> and no axis separates them. Reshape one of the ideas before scoring again — the rubric can't pick a winner from identical evidence.`;
+      } else {
+        const lead = decidingDelta > 0 ? 'b' : 'a';
+        const leadName = lead === 'a' ? aName : bName;
+        const leadCls  = lead === 'a' ? 'a-name' : 'b-name';
+        sentence = `Composite is tied at <strong>${cA}/100</strong>; the largest swing is on <strong>${deciding.name}</strong>, where <span class="${leadCls}">${escapeHtml(leadName)}</span> leads by ${deltaAbs}.`;
+      }
+    } else {
+      const leadName = leader === 'a' ? aName : bName;
+      const loseName = leader === 'a' ? bName : aName;
+      const leadCls  = leader === 'a' ? 'a-name' : 'b-name';
+      const loseCls  = leader === 'a' ? 'b-name' : 'a-name';
+      const leadScore = leader === 'a' ? cA : cB;
+      const loseScore = leader === 'a' ? cB : cA;
+      if (deltaAbs === 0) {
+        sentence = `<span class="${leadCls}">${escapeHtml(leadName)}</span> wins on composite (<strong>${leadScore}</strong> vs ${loseScore}), but the per-axis scores are identical. The gap is in weighting, not evidence.`;
+      } else {
+        sentence = `<span class="${leadCls}">${escapeHtml(leadName)}</span> wins on composite (<strong>${leadScore}</strong> vs ${loseScore}). The deciding axis is <strong>${deciding.name}</strong>.`;
+      }
+    }
+    $('#cmp-sentence').innerHTML = sentence;
+
+    // breakdown
+    const bd = $('#cmp-breakdown');
+    bd.innerHTML = DIMENSIONS.map((d, i) => {
+      const a = A.scores[d.key], b = B.scores[d.key];
+      const delta = b - a;
+      const leadCls = delta > 0 ? 'is-leader-b' : (delta < 0 ? 'is-leader-a' : '');
+      const isDeciding = d.key === deciding.key && deltaAbs > 0;
+      return `
+        <div class="bd-row bd-row--compare ${isDeciding ? 'is-deciding' : ''}">
+          <div class="num">0${i + 1}</div>
+          <div class="dim">${d.name}</div>
+          <div class="sc-a">${a}</div>
+          <div class="dual">
+            <div class="barwrap barwrap--a"><i style="width:${(a / 5) * 100}%"></i></div>
+            <div class="barwrap barwrap--b"><i style="width:${(b / 5) * 100}%"></i></div>
+          </div>
+          <div class="sc-b">${b}</div>
+          <div class="delta ${leadCls}">${delta === 0 ? '·' : (delta > 0 ? '+' : '') + delta}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function buildCompareSummaryText() {
+    const A = state.archive[0];
+    const B = snapshotActive();
+    const aName = ideaLabel(A, 'Untitled idea A');
+    const bName = ideaLabel(B, 'Untitled idea B');
+    const cA = composite(A.scores), cB = composite(B.scores);
+    const vA = verdictFor(cA), vB = verdictFor(cB);
+    const lines = [];
+    lines.push(`CRUCIBLE — kill test (comparison)`);
+    lines.push('');
+    lines.push(`A: ${aName}  ${cA}/100 — ${vA.name}`);
+    if (A.idea.desc) lines.push(`     ${A.idea.desc}`);
+    lines.push(`B: ${bName}  ${cB}/100 — ${vB.name}`);
+    if (B.idea.desc) lines.push(`     ${B.idea.desc}`);
+    lines.push('');
+    lines.push(`Per-axis (A → B, delta):`);
+    for (const d of DIMENSIONS) {
+      const a = A.scores[d.key], b = B.scores[d.key];
+      const delta = b - a;
+      const sign = delta === 0 ? ' ·' : (delta > 0 ? '+' + delta : String(delta));
+      lines.push(`  · ${d.name.padEnd(34)} ${a}/5 → ${b}/5   w ${d.weight.toFixed(2)}   ${sign}`);
+    }
+    return lines.join('\n');
   }
 
   function escapeHtml(s) {
@@ -1073,15 +1410,16 @@
 
   // ─────────── clipboard summary ───────────
   function buildSummaryText() {
-    const composite = compositeNow();
-    const verdict = verdictFor(composite);
-    const kill = killRisk();
+    const scores = state.active.scores, notes = state.active.notes;
+    const score = composite(scores);
+    const verdict = verdictFor(score);
+    const kill = killRisk(scores);
     const lines = [];
     lines.push(`CRUCIBLE — kill test`);
-    lines.push(`Idea: ${state.idea.name || 'Untitled'}`);
-    if (state.idea.desc) lines.push(`  ${state.idea.desc}`);
+    lines.push(`Idea: ${state.active.idea.name || 'Untitled'}`);
+    if (state.active.idea.desc) lines.push(`  ${state.active.idea.desc}`);
     lines.push('');
-    lines.push(`Composite: ${composite}/100 — ${verdict.name}`);
+    lines.push(`Composite: ${score}/100 — ${verdict.name}`);
     lines.push(`  ${verdict.blurb}`);
     lines.push('');
     lines.push(`Primary kill risk: ${kill.dim.name}  (weighted gap ${kill.gap.toFixed(2)})`);
@@ -1089,21 +1427,19 @@
     lines.push('');
     lines.push(`Breakdown:`);
     for (const d of DIMENSIONS) {
-      const sc = state.scores[d.key];
+      const sc = scores[d.key];
       const contrib = ((sc / 5) * d.weight * 100).toFixed(1);
       let line = `  · ${d.name.padEnd(34)} ${sc}/5   w ${d.weight.toFixed(2)}   +${contrib}`;
-      if (state.notes[d.key]) line += `\n      note: ${state.notes[d.key]}`;
+      if (notes[d.key]) line += `\n      note: ${notes[d.key]}`;
       lines.push(line);
     }
     return lines.join('\n');
   }
 
-  async function copySummary() {
-    const text = buildSummaryText();
+  async function copyText(text, flagSel) {
     try {
       await navigator.clipboard.writeText(text);
     } catch (e) {
-      // fallback for environments without clipboard API
       const ta = document.createElement('textarea');
       ta.value = text;
       document.body.appendChild(ta);
@@ -1111,10 +1447,14 @@
       try { document.execCommand('copy'); } catch (_) {}
       document.body.removeChild(ta);
     }
-    const f = $('#copied-flag');
-    f.classList.add('is-on');
-    setTimeout(() => f.classList.remove('is-on'), 1800);
+    const f = document.querySelector(flagSel);
+    if (f) {
+      f.classList.add('is-on');
+      setTimeout(() => f.classList.remove('is-on'), 1800);
+    }
   }
+  function copySummary()        { return copyText(buildSummaryText(),        '#copied-flag'); }
+  function copyCompareSummary() { return copyText(buildCompareSummaryText(), '#cmp-copied-flag'); }
 
   // ─────────── wiring ───────────
   function wire() {
@@ -1123,8 +1463,8 @@
     $('#back-landing').addEventListener('click', () => go('landing'));
     $('#back-intake').addEventListener('click', () => go('intake'));
 
-    $('#idea-name').addEventListener('input', e => state.idea.name = e.target.value);
-    $('#idea-desc').addEventListener('input', e => state.idea.desc = e.target.value);
+    $('#idea-name').addEventListener('input', e => state.active.idea.name = e.target.value);
+    $('#idea-desc').addEventListener('input', e => state.active.idea.desc = e.target.value);
 
     $('#ai-toggle').addEventListener('change', e => {
       state.aiOn = e.target.checked;
@@ -1133,9 +1473,9 @@
     });
 
     $('#to-diag').addEventListener('click', () => {
-      $('#recap-title').textContent = state.idea.name || 'Untitled idea';
-      $('#recap-body').textContent = state.idea.desc || 'No description provided. Score each axis honestly against the anchor.';
-      $('#running-val').textContent = compositeNow();
+      $('#recap-title').textContent = state.active.idea.name || 'Untitled idea';
+      $('#recap-body').textContent = state.active.idea.desc || 'No description provided. Score each axis honestly against the anchor.';
+      $('#running-val').textContent = composite(state.active.scores);
       renderCards();
       go('diag');
     });
@@ -1151,8 +1491,23 @@
 
     $('#copy-summary').addEventListener('click', copySummary);
     $('#print-report').addEventListener('click', () => window.print());
-    $('#restart').addEventListener('click', () => {
-      for (const d of DIMENSIONS) { state.scores[d.key] = 0; state.notes[d.key] = ''; }
+
+    // compare-screen actions
+    $('#cmp-copy').addEventListener('click', copyCompareSummary);
+    $('#cmp-print').addEventListener('click', () => window.print());
+    $('#cmp-replace').addEventListener('click', () => {
+      // serial pairwise: current active becomes the new archived idea
+      state.archive = [snapshotActive()];
+      state.active = blankIdea();
+      $('#idea-name').value = '';
+      $('#idea-desc').value = '';
+      go('intake');
+    });
+    $('#cmp-discard').addEventListener('click', () => {
+      state.archive = [];
+      state.active = blankIdea();
+      $('#idea-name').value = '';
+      $('#idea-desc').value = '';
       go('intake');
     });
   }
