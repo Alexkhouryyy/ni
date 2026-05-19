@@ -865,17 +865,23 @@ class AgentCore:
         return len(self._mcp_tools)
 
     def _all_tools(self) -> list[dict]:
-        return TOOLS + self._mcp_tools + self_mod.get_dynamic_tools()
+        # Cache all static tools at the last entry; dynamic tools come after the checkpoint.
+        cached = list(TOOLS)
+        cached[-1] = {**cached[-1], "cache_control": {"type": "ephemeral"}}
+        return cached + self._mcp_tools + self_mod.get_dynamic_tools()
 
-    def _effective_system_prompt(self) -> str:
-        prompt = SYSTEM_PROMPT
+    def _effective_system_prompt(self) -> list[dict]:
+        # Return a list of content blocks so we can attach cache_control to the static base.
+        blocks: list[dict] = [
+            {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+        ]
         goals_str = goals.active_goals_for_prompt()
         if goals_str:
-            prompt += "\n\n" + goals_str
+            blocks.append({"type": "text", "text": goals_str})
         overlay = self_mod.get_prompt_addition()
         if overlay:
-            prompt += "\n\n## USER-SET BEHAVIORAL RULES (must follow):\n" + overlay
-        return prompt
+            blocks.append({"type": "text", "text": "## USER-SET BEHAVIORAL RULES (must follow):\n" + overlay})
+        return blocks
 
     def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None) -> str:
         """Run a full agent turn. Returns the final text response.
