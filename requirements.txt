@@ -7,6 +7,10 @@ ipykernel
 watchdog
 pypdf
 pyperclip
+fastapi
+uvicorn
+pytesseract
+opencv-python-headless
 faster-whisper
 sounddevice
 numpy

@@ -118,6 +118,22 @@ def main():
     from agent import knowledge
     knowledge.init_db()
 
+    # Goals — init tables + auto-schedule weekly self-eval (once per fresh DB)
+    from agent import goals
+    goals.init_db()
+    weekly_eval_exists = any(
+        "Weekly self-evaluation" in t.get("description", "") for t in sched.list_tasks()
+    )
+    if not weekly_eval_exists:
+        sched.schedule(
+            description=(
+                "Weekly self-evaluation. Call evaluate_recent_work(days=7) and speak the result. "
+                "Then suggest one concrete focus for the coming week."
+            ),
+            trigger_type="cron",
+            trigger_params={"day_of_week": "mon", "hour": 8, "minute": 0},
+        )
+
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:
         from agent.awareness import AwarenessMonitor
@@ -155,6 +171,27 @@ def main():
         # Fall back to original screenshot-only proactive
         from agent.proactive import ProactiveMonitor
         monitor = ProactiveMonitor(agent, speak)
+
+    # Start the web dashboard
+    if getattr(config, "DASHBOARD_ENABLED", True):
+        try:
+            from dashboard import server as dash
+            dash.set_agent(agent, awareness_log=getattr(monitor, "log", None))
+            # Hook awareness events into the WebSocket broadcaster
+            if hasattr(monitor, "log"):
+                _orig_add = monitor.log.add
+                def _add_and_broadcast(source, content):
+                    _orig_add(source, content)
+                    dash.ws_manager.broadcast_threadsafe({
+                        "type": "event", "ts": __import__("time").time(),
+                        "source": source, "content": content,
+                    })
+                monitor.log.add = _add_and_broadcast
+            port = getattr(config, "DASHBOARD_PORT", 7860)
+            dash.start_in_background(port=port)
+            print(f"[Dashboard] http://127.0.0.1:{port}")
+        except Exception as e:
+            print(f"[Dashboard] Failed to start: {e}")
 
     shutdown_event = threading.Event()
 

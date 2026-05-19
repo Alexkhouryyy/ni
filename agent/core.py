@@ -9,7 +9,8 @@ from agent import mcp_client
 from agent import orchestrator
 from agent import knowledge
 from agent import self_mod
-from tools import computer, bash, research, files, browser, repl
+from agent import goals
+from tools import computer, bash, research, files, browser, repl, vision
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
 research capabilities, and a bash terminal. You are running on the user's machine and can see their screen.
@@ -54,6 +55,14 @@ Use when the user asks about THEIR stuff: "what did I write about", "find that n
 When the user gives a durable instruction ("always X", "from now on Y"), update your prompt. \
 When you notice a recurring task that needs a tool you lack, register one. \
 All self-mods persist across sessions.
+- **find_on_screen / click_on / annotate_screenshot / click_mark**: Vision precision via OCR. \
+Whenever you can identify a click target by its text, PREFER click_on("Submit") over guessing \
+pixel coords with click(x,y). For complex UIs, call annotate_screenshot to get numbered marks, \
+then click_mark(N) to pick the right element. This is dramatically more reliable than raw clicks.
+- **set_goal / list_goals / update_goal / evaluate_recent_work**: Strategic agency. \
+When the user expresses a goal ("I want to launch by June", "this week I want to ship X"), \
+call set_goal. After meaningful progress on a goal, call update_goal with a progress_note. \
+At the end of work sessions or when asked "how have I been doing?", call evaluate_recent_work.
 - **read_file**: Read a file
 - **write_file**: Create or overwrite a file
 - **append_file**: Append to a file
@@ -62,12 +71,14 @@ All self-mods persist across sessions.
 
 ## BEHAVIOR RULES:
 1. For ANY task involving the UI, take a screenshot FIRST to see the current state.
-2. Chain tools — plan the full sequence before starting, then execute step by step.
-3. After completing a task, briefly confirm what you did and what the result was.
-4. If a task fails, diagnose why, try a different approach, and report what happened.
-5. Never ask clarifying questions for simple tasks — make a reasonable assumption and proceed.
-6. For destructive or irreversible actions (deleting files, sending messages, etc.), confirm with the user first.
-7. When you notice something on screen worth mentioning (error, opportunity, concern) — do it.
+2. For clicks: ALWAYS prefer click_on("text label") over raw click(x,y). The latter is a last resort.
+3. For dense UIs without obvious text anchors, use annotate_screenshot then click_mark.
+4. Chain tools — plan the full sequence before starting, then execute step by step.
+5. After completing a task, briefly confirm what you did and what the result was.
+6. If a task fails, diagnose why, try a different approach, and report what happened.
+7. Never ask clarifying questions for simple tasks — make a reasonable assumption and proceed.
+8. For destructive or irreversible actions (deleting files, sending messages, etc.), confirm with the user first.
+9. When you notice something on screen worth mentioning (error, opportunity, concern) — do it.
 
 ## LONG-TERM MEMORY:
 You have persistent memory across sessions via `remember` and `recall` tools.
@@ -502,6 +513,99 @@ TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "find_on_screen",
+        "description": "OCR the screen for text and return matching regions with bounding boxes. Use to locate UI elements by their visible text.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Text to find (case-insensitive substring or phrase)"},
+                "exact": {"type": "boolean", "default": False},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "click_on",
+        "description": "OCR-find text on screen and click its center. Prefer this over click(x,y) when you can identify the target by text — much more reliable.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "occurrence": {"type": "integer", "default": 0, "description": "0-indexed: which match to click if multiple"},
+                "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"},
+                "double": {"type": "boolean", "default": False},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "annotate_screenshot",
+        "description": "Capture the screen with numbered visual marks on every detected text region. Returns the marked image (you can see it) and lets you reference marks by number with click_mark.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "click_mark",
+        "description": "Click a numbered mark from the most recent annotate_screenshot call.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "mark_number": {"type": "integer"},
+                "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"},
+                "double": {"type": "boolean", "default": False},
+            },
+            "required": ["mark_number"],
+        },
+    },
+    {
+        "name": "set_goal",
+        "description": "Create a strategic goal. Use when the user expresses a longer-term aim ('I want to launch by end of June', 'my goal this week is X').",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string", "default": ""},
+                "horizon": {"type": "string", "enum": ["day", "week", "month", "quarter"], "default": "week"},
+                "deadline_iso": {"type": "string", "description": "Optional ISO date YYYY-MM-DD"},
+            },
+            "required": ["title"],
+        },
+    },
+    {
+        "name": "list_goals",
+        "description": "List goals. By default returns only active ones.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "active_only": {"type": "boolean", "default": True},
+                "horizon": {"type": "string"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "update_goal",
+        "description": "Update a goal's status or add a progress note. Use after meaningful work on a goal.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal_id": {"type": "integer"},
+                "status": {"type": "string", "enum": ["active", "paused", "done", "abandoned"]},
+                "progress_note": {"type": "string"},
+                "score": {"type": "integer", "description": "1-10 satisfaction with this progress"},
+            },
+            "required": ["goal_id"],
+        },
+    },
+    {
+        "name": "evaluate_recent_work",
+        "description": "Self-evaluate the last N days of work: what got done, what stalled, what to focus on next. Use weekly or when the user asks 'how have I been doing?'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"days": {"type": "integer", "default": 7}},
+            "required": [],
+        },
+    },
 ]
 
 
@@ -647,6 +751,48 @@ def _execute_tool(name: str, inputs: dict) -> str:
         elif name == "revert_self_mod":
             return self_mod.revert(inputs.get("restore_backup", False))
 
+        elif name == "find_on_screen":
+            return json.dumps(vision.find_on_screen(inputs["query"], inputs.get("exact", False)), indent=2)
+        elif name == "click_on":
+            return vision.click_on(
+                inputs["query"],
+                occurrence=inputs.get("occurrence", 0),
+                button=inputs.get("button", "left"),
+                double=inputs.get("double", False),
+            )
+        elif name == "annotate_screenshot":
+            return vision.annotate_for_agent()
+        elif name == "click_mark":
+            return vision.click_mark(
+                inputs["mark_number"],
+                button=inputs.get("button", "left"),
+                double=inputs.get("double", False),
+            )
+
+        elif name == "set_goal":
+            return goals.set_goal(
+                inputs["title"],
+                inputs.get("description", ""),
+                inputs.get("horizon", "week"),
+                inputs.get("deadline_iso"),
+            )
+        elif name == "list_goals":
+            result = goals.list_goals(
+                active_only=inputs.get("active_only", True),
+                horizon=inputs.get("horizon"),
+            )
+            return json.dumps(result, indent=2, default=str) if result else "No goals set."
+        elif name == "update_goal":
+            return goals.update_goal(
+                inputs["goal_id"],
+                status=inputs.get("status"),
+                progress_note=inputs.get("progress_note"),
+                score=inputs.get("score"),
+            )
+        elif name == "evaluate_recent_work":
+            client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+            return goals.evaluate_recent_work(client, days=inputs.get("days", 7))
+
         else:
             # Try dynamic tools registered via self_mod
             dyn_result = self_mod.dispatch(name, inputs)
@@ -660,7 +806,7 @@ def _execute_tool(name: str, inputs: dict) -> str:
 
 def _make_tool_result_content(name: str, tool_use_id: str, result_str: str) -> dict:
     """Build a tool_result content block, injecting images for screenshots."""
-    if name in ("screenshot", "browser_screenshot"):
+    if name in ("screenshot", "browser_screenshot", "annotate_screenshot"):
         try:
             data = json.loads(result_str)
             if "__screenshot__" in data:
@@ -722,10 +868,14 @@ class AgentCore:
         return TOOLS + self._mcp_tools + self_mod.get_dynamic_tools()
 
     def _effective_system_prompt(self) -> str:
+        prompt = SYSTEM_PROMPT
+        goals_str = goals.active_goals_for_prompt()
+        if goals_str:
+            prompt += "\n\n" + goals_str
         overlay = self_mod.get_prompt_addition()
         if overlay:
-            return SYSTEM_PROMPT + "\n\n## USER-SET BEHAVIORAL RULES (must follow):\n" + overlay
-        return SYSTEM_PROMPT
+            prompt += "\n\n## USER-SET BEHAVIORAL RULES (must follow):\n" + overlay
+        return prompt
 
     def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None) -> str:
         """Run a full agent turn. Returns the final text response.

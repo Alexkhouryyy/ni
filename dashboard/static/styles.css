@@ -1,0 +1,78 @@
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  margin: 0; padding: 0;
+  background: #0d1117; color: #c9d1d9;
+}
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 24px;
+  background: #161b22; border-bottom: 1px solid #30363d;
+}
+header h1 { margin: 0; font-size: 18px; color: #58a6ff; }
+#status-bar { display: flex; gap: 16px; font-size: 13px; color: #8b949e; }
+.ws-off { color: #f85149; }
+.ws-on { color: #3fb950; }
+
+nav.tabs {
+  display: flex; gap: 0; padding: 0 24px;
+  background: #161b22; border-bottom: 1px solid #30363d;
+  overflow-x: auto;
+}
+nav.tabs button {
+  background: transparent; color: #8b949e; border: none;
+  padding: 10px 16px; cursor: pointer; font-size: 14px;
+  border-bottom: 2px solid transparent;
+}
+nav.tabs button:hover { color: #c9d1d9; }
+nav.tabs button.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
+main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+.tab { display: none; }
+.tab.active { display: block; }
+h2 { color: #f0f6fc; margin-top: 0; }
+
+.add-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.add-form.vertical { flex-direction: column; }
+.add-form input, .add-form select, .add-form textarea {
+  background: #0d1117; color: #c9d1d9; border: 1px solid #30363d;
+  padding: 8px 12px; border-radius: 6px; font-size: 14px;
+}
+.add-form input { flex: 1; min-width: 150px; }
+.add-form button {
+  background: #238636; color: white; border: none;
+  padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;
+}
+.add-form button:hover { background: #2ea043; }
+button.danger { background: #da3633; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+
+.controls { display: flex; gap: 8px; margin-bottom: 12px; }
+.controls input { flex: 1; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; padding: 8px 12px; border-radius: 6px; }
+.controls button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #21262d; font-size: 13px; }
+th { color: #8b949e; font-weight: 500; background: #161b22; }
+td button { background: #da3633; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+
+.card {
+  background: #161b22; border: 1px solid #30363d;
+  padding: 12px 16px; margin-bottom: 8px; border-radius: 8px;
+}
+.card .meta { color: #8b949e; font-size: 12px; margin-top: 4px; }
+.card .actions { margin-top: 8px; }
+.card .actions button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 6px; }
+
+.feed { max-height: 600px; overflow-y: auto; background: #161b22; border: 1px solid #30363d; padding: 12px; border-radius: 8px; }
+.feed-item { padding: 8px 0; border-bottom: 1px solid #21262d; font-size: 13px; }
+.feed-item:last-child { border-bottom: none; }
+.feed-item .ts { color: #8b949e; font-size: 11px; margin-right: 8px; }
+.feed-item .source { color: #58a6ff; font-weight: 500; margin-right: 8px; }
+
+#goals-list .card .horizon { background: #1f6feb; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.status-done { color: #3fb950; }
+.status-active { color: #58a6ff; }
+.status-paused { color: #d29922; }
+.status-error { color: #f85149; }
+
+textarea { width: 100%; background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; padding: 8px 12px; border-radius: 6px; font-family: inherit; }

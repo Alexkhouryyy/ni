@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Agent — Dashboard</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <h1>Voice Agent</h1>
+  <div id="status-bar">
+    <span id="status-model">—</span>
+    <span id="status-tools">— tools</span>
+    <span id="status-uptime">—</span>
+    <span id="ws-indicator" class="ws-off">offline</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button data-tab="live" class="active">Live</button>
+  <button data-tab="goals">Goals</button>
+  <button data-tab="memory">Memory</button>
+  <button data-tab="schedule">Schedule</button>
+  <button data-tab="knowledge">Knowledge</button>
+  <button data-tab="subagents">Sub-agents</button>
+  <button data-tab="selfmod">Self-mod</button>
+</nav>
+
+<main>
+  <section id="tab-live" class="tab active">
+    <h2>Live activity</h2>
+    <div id="event-feed" class="feed"></div>
+  </section>
+
+  <section id="tab-goals" class="tab">
+    <h2>Goals</h2>
+    <form id="goal-form" class="add-form">
+      <input name="title" placeholder="Goal title" required>
+      <input name="description" placeholder="Description (optional)">
+      <select name="horizon">
+        <option value="day">day</option>
+        <option value="week" selected>week</option>
+        <option value="month">month</option>
+        <option value="quarter">quarter</option>
+      </select>
+      <input name="deadline_iso" placeholder="YYYY-MM-DD (optional)">
+      <button type="submit">Add</button>
+    </form>
+    <div id="goals-list"></div>
+  </section>
+
+  <section id="tab-memory" class="tab">
+    <h2>Long-term memory</h2>
+    <div class="controls">
+      <input id="memory-search" placeholder="Search memories...">
+      <button id="memory-refresh">Refresh</button>
+    </div>
+    <table id="memory-table">
+      <thead><tr><th>ID</th><th>Kind</th><th>Importance</th><th>Content</th><th>Actions</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section id="tab-schedule" class="tab">
+    <h2>Scheduled tasks</h2>
+    <form id="task-form" class="add-form">
+      <input name="description" placeholder="Task description" required>
+      <select name="trigger_type">
+        <option value="cron">cron</option>
+        <option value="interval">interval</option>
+        <option value="date">date</option>
+      </select>
+      <input name="trigger_params" placeholder='{"hour":8,"minute":0}' required>
+      <button type="submit">Add</button>
+    </form>
+    <div id="tasks-list"></div>
+  </section>
+
+  <section id="tab-knowledge" class="tab">
+    <h2>Knowledge base</h2>
+    <div id="kb-stats"></div>
+    <form id="kb-reindex-form" class="add-form">
+      <input name="paths" placeholder="~/Documents/notes, ~/code" required>
+      <label><input type="checkbox" name="force"> Force</label>
+      <button type="submit">Reindex</button>
+    </form>
+    <div class="controls">
+      <input id="kb-search-input" placeholder="Semantic search...">
+      <button id="kb-search-btn">Search</button>
+    </div>
+    <div id="kb-results"></div>
+  </section>
+
+  <section id="tab-subagents" class="tab">
+    <h2>Sub-agents</h2>
+    <div id="subagents-list"></div>
+  </section>
+
+  <section id="tab-selfmod" class="tab">
+    <h2>Self-modification</h2>
+    <div id="selfmod-state"></div>
+    <form id="prompt-form" class="add-form vertical">
+      <textarea name="addition" placeholder="Add a durable behavioral rule..." rows="4" required></textarea>
+      <label><input type="checkbox" name="replace"> Replace (instead of append)</label>
+      <button type="submit">Update prompt</button>
+    </form>
+    <button id="revert-btn" class="danger">Revert all self-mods</button>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

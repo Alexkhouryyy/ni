@@ -44,6 +44,13 @@ KB_INDEX_PATHS = [                    # paths to index for RAG
 # Multi-agent
 MAX_SUBAGENTS = 5                     # max concurrent sub-agents
 
+# Dashboard
+DASHBOARD_ENABLED = True
+DASHBOARD_PORT = 7860
+
+# OCR / vision precision
+OCR_CONFIDENCE_THRESHOLD = 30
+
 # API keys
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")

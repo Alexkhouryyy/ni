@@ -16,6 +16,13 @@ if [[ "$(uname)" == "Linux" ]]; then
         echo "==> Installing xdotool (sudo required)..."
         sudo apt-get update && sudo apt-get install -y xdotool espeak portaudio19-dev
     fi
+    if ! command -v tesseract &> /dev/null; then
+        echo "==> Installing tesseract-ocr (for vision precision)..."
+        sudo apt-get install -y tesseract-ocr
+    fi
+    if ! command -v xclip &> /dev/null; then
+        sudo apt-get install -y xclip
+    fi
 fi
 
 # 3. Playwright Chromium
