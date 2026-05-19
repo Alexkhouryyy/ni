@@ -1,4 +1,7 @@
 anthropic>=0.40.0
+apscheduler
+sentence-transformers
+mcp
 faster-whisper
 sounddevice
 numpy

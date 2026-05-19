@@ -1,0 +1,33 @@
+{
+  "_comment": "Add your MCP servers here. Same format as Claude Desktop config.",
+  "_docs": "https://modelcontextprotocol.io/quickstart/user",
+  "mcpServers": {
+    "_example_slack": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "xoxb-your-token-here",
+        "SLACK_TEAM_ID": "T0000000000"
+      }
+    },
+    "_example_notion": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-notion"],
+      "env": {
+        "NOTION_API_KEY": "secret_your-notion-key"
+      }
+    },
+    "_example_gmail": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-google-drive"],
+      "env": {
+        "GDRIVE_CREDENTIALS_PATH": "~/.config/gcloud/credentials.json"
+      }
+    },
+    "_example_filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home", "/tmp"],
+      "env": {}
+    }
+  }
+}

@@ -1,18 +1,68 @@
-"""Long-term persistent memory backed by SQLite.
+"""Long-term persistent memory backed by SQLite + semantic embeddings.
 
-The agent uses two tools:
-  - remember(content, kind, importance): store a durable fact/preference/decision
-  - recall(query, limit): retrieve relevant past memories
+Tools for the agent:
+  - remember(content, kind, importance): store a durable memory with embedding
+  - recall(query, limit, semantic): retrieve relevant past memories
+  - forget(id): delete a memory
 
-On startup, the top-N most important memories are loaded into the agent's context
-so it always knows who you are, what you're working on, and your preferences.
+Recall strategy:
+  - semantic=True (default when query is a full sentence): cosine similarity over embeddings
+  - semantic=False: fast LIKE search for exact keyword matching
+  - Falls back to LIKE if embeddings model not loaded
 """
 import os
 import sqlite3
 import time
+import json
 from contextlib import contextmanager
+from typing import Optional
+
+import numpy as np
 
 DB_PATH = os.path.expanduser("~/.voice_agent_memory.db")
+
+_embed_model = None
+_embed_lock = None
+
+
+def _get_embed_model():
+    global _embed_model, _embed_lock
+    import threading
+    if _embed_lock is None:
+        _embed_lock = threading.Lock()
+    with _embed_lock:
+        if _embed_model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+                print("[Memory] Loading embedding model (all-MiniLM-L6-v2)...")
+                _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+                print("[Memory] Embedding model ready.")
+            except Exception as e:
+                print(f"[Memory] Embedding model unavailable: {e}")
+                _embed_model = False  # sentinel: tried and failed
+        return _embed_model if _embed_model is not False else None
+
+
+def _embed(text: str) -> Optional[bytes]:
+    model = _get_embed_model()
+    if model is None:
+        return None
+    try:
+        vec = model.encode([text], normalize_embeddings=True)[0]
+        return vec.astype(np.float32).tobytes()
+    except Exception:
+        return None
+
+
+def _cosine_scores(query_vec: np.ndarray, blob_list: list[bytes]) -> list[float]:
+    scores = []
+    for blob in blob_list:
+        if blob is None:
+            scores.append(0.0)
+            continue
+        vec = np.frombuffer(blob, dtype=np.float32)
+        scores.append(float(np.dot(query_vec, vec)))
+    return scores
 
 
 def init_db():
@@ -21,18 +71,36 @@ def init_db():
             CREATE TABLE IF NOT EXISTS memories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ts REAL NOT NULL,
-                kind TEXT NOT NULL,           -- fact / preference / project / decision / note
+                kind TEXT NOT NULL,
                 content TEXT NOT NULL,
-                importance INTEGER NOT NULL,  -- 1-10
-                tags TEXT DEFAULT ''
+                importance INTEGER NOT NULL,
+                tags TEXT DEFAULT '',
+                embedding BLOB
             )
         """)
+        # Add embedding column if migrating from old schema
+        try:
+            c.execute("ALTER TABLE memories ADD COLUMN embedding BLOB")
+        except Exception:
+            pass
         c.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 started_at REAL NOT NULL,
                 ended_at REAL,
                 summary TEXT DEFAULT ''
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                id TEXT PRIMARY KEY,
+                description TEXT NOT NULL,
+                trigger_type TEXT NOT NULL,
+                trigger_params TEXT NOT NULL,
+                enabled INTEGER DEFAULT 1,
+                created_at REAL NOT NULL,
+                last_run REAL,
+                run_count INTEGER DEFAULT 0
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_mem_importance ON memories(importance DESC, ts DESC)")
@@ -54,32 +122,55 @@ def remember(content: str, kind: str = "fact", importance: int = 5, tags: str = 
     if kind not in {"fact", "preference", "project", "decision", "note"}:
         kind = "note"
     importance = max(1, min(10, int(importance)))
+    embedding = _embed(content)
     with _conn() as c:
         c.execute(
-            "INSERT INTO memories (ts, kind, content, importance, tags) VALUES (?, ?, ?, ?, ?)",
-            (time.time(), kind, content, importance, tags),
+            "INSERT INTO memories (ts, kind, content, importance, tags, embedding) VALUES (?, ?, ?, ?, ?, ?)",
+            (time.time(), kind, content, importance, tags, embedding),
         )
         new_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
     return f"Remembered [#{new_id} {kind} importance={importance}]: {content}"
 
 
-def recall(query: str = "", limit: int = 10, kind: str = "") -> list[dict]:
-    """Return memories matching query (LIKE search on content/tags), most important+recent first."""
-    sql = "SELECT id, ts, kind, content, importance, tags FROM memories"
-    where, params = [], []
-    if query:
-        where.append("(content LIKE ? OR tags LIKE ?)")
-        params.extend([f"%{query}%", f"%{query}%"])
-    if kind:
-        where.append("kind = ?")
-        params.append(kind.lower())
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY importance DESC, ts DESC LIMIT ?"
-    params.append(int(limit))
-
+def recall(query: str = "", limit: int = 10, kind: str = "", semantic: bool = True) -> list[dict]:
+    """Retrieve memories. Uses semantic search when a query is given and embeddings available."""
     with _conn() as c:
-        rows = c.execute(sql, params).fetchall()
+        if kind:
+            rows = c.execute(
+                "SELECT id, ts, kind, content, importance, tags, embedding FROM memories WHERE kind = ? ORDER BY importance DESC, ts DESC",
+                (kind.lower(),)
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT id, ts, kind, content, importance, tags, embedding FROM memories ORDER BY importance DESC, ts DESC"
+            ).fetchall()
+
+    if not rows:
+        return []
+
+    if query and semantic:
+        model = _get_embed_model()
+        if model is not None:
+            query_vec = model.encode([query], normalize_embeddings=True)[0].astype(np.float32)
+            blobs = [r[6] for r in rows]
+            scores = _cosine_scores(query_vec, blobs)
+            # Blend semantic score with importance
+            combined = [(scores[i] + rows[i][4] / 20.0, i) for i in range(len(rows))]
+            combined.sort(reverse=True)
+            top = [rows[i] for _, i in combined[:int(limit)]]
+            return _format_rows(top)
+        # Fallback: LIKE
+        query_lower = f"%{query}%"
+        return _format_rows([r for r in rows if query_lower[1:-1] in r[3].lower() or query_lower[1:-1] in r[5].lower()][:int(limit)])
+
+    elif query:
+        q = query.lower()
+        return _format_rows([r for r in rows if q in r[3].lower() or q in r[5].lower()][:int(limit)])
+
+    return _format_rows(rows[:int(limit)])
+
+
+def _format_rows(rows) -> list[dict]:
     return [
         {"id": r[0], "ts": r[1], "kind": r[2], "content": r[3], "importance": r[4], "tags": r[5]}
         for r in rows

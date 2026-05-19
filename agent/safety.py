@@ -1,0 +1,40 @@
+"""Safety layer — intercepts dangerous tool calls and requires confirmation."""
+import re
+
+# (tool_name, input_key, pattern) → human-readable risk description
+_RULES: list[tuple[str, str, re.Pattern, str]] = [
+    ("bash", "command", re.compile(r"\brm\b.+(-rf?|--recursive)", re.I), "recursive delete"),
+    ("bash", "command", re.compile(r"\bdd\b"), "disk overwrite (dd)"),
+    ("bash", "command", re.compile(r">\s*/dev/(sd|nvme|disk)", re.I), "writing to raw device"),
+    ("bash", "command", re.compile(r"(sudo\s+)?shutdown|reboot|halt", re.I), "system shutdown/reboot"),
+    ("bash", "command", re.compile(r"(curl|wget).+(sh|bash|zsh)\s*\|", re.I), "piping remote script to shell"),
+    ("write_file", "path", re.compile(r"^/(etc|sys|proc|boot|usr/bin)"), "writing to system path"),
+    ("write_file", "path", re.compile(r"\.ssh/(authorized_keys|config|id_)", re.I), "modifying SSH keys"),
+    ("browser_click", "selector", re.compile(r"(submit|confirm|send|delete|pay|buy|purchase|place.order)", re.I), "form submission or purchase"),
+    ("browser_press", "key", re.compile(r"^Enter$"), "pressing Enter (may submit a form)"),
+]
+
+_confirm_fn = None  # injected at startup: a callable(prompt: str) -> bool
+
+
+def set_confirm_fn(fn) -> None:
+    global _confirm_fn
+    _confirm_fn = fn
+
+
+def check(tool_name: str, inputs: dict) -> tuple[bool, str]:
+    """Returns (proceed: bool, reason: str). False means blocked by user."""
+    for rule_tool, rule_key, pattern, description in _RULES:
+        if tool_name != rule_tool:
+            continue
+        value = str(inputs.get(rule_key, ""))
+        if pattern.search(value):
+            reason = f"Risky action: {description}\nTool: {tool_name}\nValue: {value[:120]}"
+            if _confirm_fn is None:
+                print(f"\n[Safety] {reason}")
+                answer = input("Proceed? (y/N): ").strip().lower()
+                return answer in {"y", "yes"}, reason
+            else:
+                proceed = _confirm_fn(reason)
+                return proceed, reason
+    return True, ""

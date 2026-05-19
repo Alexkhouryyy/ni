@@ -4,6 +4,8 @@ import anthropic
 import config
 from agent.memory import Memory
 from agent import longterm
+from agent import safety
+from agent import mcp_client
 from tools import computer, bash, research, files, browser
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
@@ -33,6 +35,10 @@ edge cases, and alternatives before touching anything.
 - **browser_***: Drive a real Chromium browser — goto, click, fill, press, get_text, screenshot, \
 evaluate JS. Use this when you need to actually INTERACT with a website (log in, fill forms, \
 click buttons, submit). Use web_browse for read-only access.
+- **schedule_task / list_scheduled_tasks / cancel_scheduled_task**: Schedule autonomous recurring \
+tasks (daily briefings, reminders, periodic checks). Tasks run even when you're not talking.
+- **mcp__***: Dynamically loaded tools from configured MCP servers (Slack, Notion, Gmail, Calendar, \
+etc.). If these appear, use them for integrations with the user's real data.
 - **read_file**: Read a file
 - **write_file**: Create or overwrite a file
 - **append_file**: Append to a file
@@ -330,11 +336,50 @@ TOOLS = [
         "description": "Close the browser. Only use when done with browsing or freeing resources.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "schedule_task",
+        "description": (
+            "Schedule a recurring or one-off autonomous task. "
+            "The agent will run the task prompt automatically at the given time. "
+            "Examples: daily briefing, reminders, periodic checks."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string", "description": "What the agent should do when this fires (full prompt)"},
+                "trigger_type": {"type": "string", "enum": ["cron", "interval", "date"], "description": "cron=recurring at time, interval=every N minutes/hours, date=once at datetime"},
+                "trigger_params": {
+                    "type": "object",
+                    "description": "cron: {hour, minute, day_of_week?} | interval: {minutes?, hours?} | date: {run_date: 'YYYY-MM-DD HH:MM:SS'}",
+                },
+            },
+            "required": ["description", "trigger_type", "trigger_params"],
+        },
+    },
+    {
+        "name": "list_scheduled_tasks",
+        "description": "List all scheduled autonomous tasks.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "cancel_scheduled_task",
+        "description": "Cancel a scheduled task by its ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
+        },
+    },
 ]
 
 
 def _execute_tool(name: str, inputs: dict) -> str:
     """Dispatch a tool call and return its result as a string."""
+    # Safety check before execution
+    proceed, reason = safety.check(name, inputs)
+    if not proceed:
+        return f"[BLOCKED by safety layer] {reason}"
+
     try:
         if name == "screenshot":
             b64, size = computer.screenshot()
@@ -424,6 +469,20 @@ def _execute_tool(name: str, inputs: dict) -> str:
         elif name == "browser_close":
             return browser.close()
 
+        elif name == "schedule_task":
+            from agent import scheduler as sched
+            return sched.schedule(inputs["description"], inputs["trigger_type"], inputs["trigger_params"])
+        elif name == "list_scheduled_tasks":
+            from agent import scheduler as sched
+            tasks = sched.list_tasks()
+            return json.dumps(tasks, indent=2) if tasks else "No scheduled tasks."
+        elif name == "cancel_scheduled_task":
+            from agent import scheduler as sched
+            return sched.cancel(inputs["task_id"])
+
+        elif name.startswith("mcp__"):
+            return mcp_client.call(name, inputs)
+
         else:
             return f"Unknown tool: {name}"
 
@@ -460,6 +519,19 @@ class AgentCore:
     def __init__(self):
         self.client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         self.memory = Memory()
+        self._mcp_tools: list[dict] = []
+        self._mcp_loaded = False
+
+    def load_mcp_tools(self) -> int:
+        """Discover MCP servers and register their tools. Returns count added."""
+        self._mcp_tools = mcp_client.discover()
+        self._mcp_loaded = True
+        if self._mcp_tools:
+            print(f"[MCP] Registered {len(self._mcp_tools)} tools from MCP servers.")
+        return len(self._mcp_tools)
+
+    def _all_tools(self) -> list[dict]:
+        return TOOLS + self._mcp_tools
 
     def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None) -> str:
         """Run a full agent turn. Returns the final text response.
@@ -501,7 +573,7 @@ class AgentCore:
                 model=config.AGENT_MODEL,
                 max_tokens=16000,
                 system=SYSTEM_PROMPT,
-                tools=TOOLS,
+                tools=self._all_tools(),
                 messages=self.memory.get_messages(),
             )
 

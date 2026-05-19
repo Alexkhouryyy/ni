@@ -46,6 +46,7 @@ def main():
     print("  Mode:      ", "text" if args.text else "voice")
     print("  Thinking:  ", "on" if args.think else "auto")
     print("  Proactive: ", "on" if config.PROACTIVE_ENABLED else "off")
+    print("  Wake word: ", "on" if args.wake else "off")
     print("="*60 + "\n")
 
     # Initialize agent + long-term memory
@@ -63,6 +64,14 @@ def main():
     if memories:
         agent.memory.summary = longterm.format_for_context(memories)
 
+    # MCP tool discovery (non-blocking — happens in background)
+    import threading
+    def _load_mcp():
+        n = agent.load_mcp_tools()
+        if n:
+            speak(f"Connected {n} MCP tools.")
+    threading.Thread(target=_load_mcp, daemon=True, name="MCPDiscover").start()
+
     # Initialize I/O
     if args.text:
         def speak(text: str):
@@ -79,6 +88,18 @@ def main():
 
         # Warm up TTS
         speak("Agent online. Ready.")
+
+    # Wire safety confirmation to speak+listen
+    from agent import safety as _safety
+    def _voice_confirm(reason: str) -> bool:
+        speak(f"Safety check. {reason}. Say yes to proceed.")
+        answer = listen() if not args.text else input("Proceed? (y/N): ").strip()
+        return answer.lower() in {"yes", "y", "yeah", "yep", "do it", "confirm"}
+    _safety.set_confirm_fn(_voice_confirm)
+
+    # Start scheduler
+    from agent import scheduler as sched
+    sched.init(agent_run_fn=agent.run, speak_fn=speak)
 
     # Start proactive monitor
     from agent.proactive import ProactiveMonitor
