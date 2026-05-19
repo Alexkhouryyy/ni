@@ -4,7 +4,7 @@ import anthropic
 import config
 from agent.memory import Memory
 from agent import longterm
-from tools import computer, bash, research, files
+from tools import computer, bash, research, files, browser
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
 research capabilities, and a bash terminal. You are running on the user's machine and can see their screen.
@@ -30,6 +30,9 @@ edge cases, and alternatives before touching anything.
 - **web_search**: Search the web for current information
 - **web_browse**: Fetch and read a specific URL
 - **deep_research**: Comprehensive research on a topic (search + read multiple sources)
+- **browser_***: Drive a real Chromium browser — goto, click, fill, press, get_text, screenshot, \
+evaluate JS. Use this when you need to actually INTERACT with a website (log in, fill forms, \
+click buttons, submit). Use web_browse for read-only access.
 - **read_file**: Read a file
 - **write_file**: Create or overwrite a file
 - **append_file**: Append to a file
@@ -252,6 +255,81 @@ TOOLS = [
             "required": ["memory_id"],
         },
     },
+    {
+        "name": "browser_goto",
+        "description": "Open a URL in a real Chromium browser. The browser persists across calls so you can navigate, click, fill forms.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "headless": {"type": "boolean", "default": False},
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "browser_click",
+        "description": "Click a CSS selector in the active browser page.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"selector": {"type": "string", "description": "CSS selector, e.g. 'button.submit' or 'text=Sign in'"}},
+            "required": ["selector"],
+        },
+    },
+    {
+        "name": "browser_fill",
+        "description": "Fill a form field in the active browser page.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "selector": {"type": "string"},
+                "text": {"type": "string"},
+            },
+            "required": ["selector", "text"],
+        },
+    },
+    {
+        "name": "browser_press",
+        "description": "Press a keyboard key in the browser, e.g. 'Enter', 'Tab', 'Escape'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"key": {"type": "string"}},
+            "required": ["key"],
+        },
+    },
+    {
+        "name": "browser_get_text",
+        "description": "Extract visible text from a selector (default: whole body) in the active browser page.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"selector": {"type": "string", "default": "body"}},
+            "required": [],
+        },
+    },
+    {
+        "name": "browser_screenshot",
+        "description": "Take a screenshot of the active browser page. Use after interactions to verify state.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_evaluate",
+        "description": "Run JavaScript in the active browser page. Returns the result as a string.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"js": {"type": "string", "description": "JavaScript expression"}},
+            "required": ["js"],
+        },
+    },
+    {
+        "name": "browser_url",
+        "description": "Get the current URL of the active browser page.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "browser_close",
+        "description": "Close the browser. Only use when done with browsing or freeing resources.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
 ]
 
 
@@ -326,6 +404,26 @@ def _execute_tool(name: str, inputs: dict) -> str:
         elif name == "forget":
             return longterm.forget(inputs["memory_id"])
 
+        elif name == "browser_goto":
+            return browser.goto(inputs["url"], headless=inputs.get("headless", False))
+        elif name == "browser_click":
+            return browser.click(inputs["selector"])
+        elif name == "browser_fill":
+            return browser.fill(inputs["selector"], inputs["text"])
+        elif name == "browser_press":
+            return browser.press(inputs["key"])
+        elif name == "browser_get_text":
+            return browser.get_text(inputs.get("selector", "body"))
+        elif name == "browser_screenshot":
+            b64 = browser.screenshot()
+            return json.dumps({"__screenshot__": b64, "size": [1280, 800]})
+        elif name == "browser_evaluate":
+            return browser.evaluate(inputs["js"])
+        elif name == "browser_url":
+            return browser.current_url()
+        elif name == "browser_close":
+            return browser.close()
+
         else:
             return f"Unknown tool: {name}"
 
@@ -335,15 +433,16 @@ def _execute_tool(name: str, inputs: dict) -> str:
 
 def _make_tool_result_content(name: str, tool_use_id: str, result_str: str) -> dict:
     """Build a tool_result content block, injecting images for screenshots."""
-    if name == "screenshot":
+    if name in ("screenshot", "browser_screenshot"):
         try:
             data = json.loads(result_str)
             if "__screenshot__" in data:
+                media = "image/png" if name == "browser_screenshot" else "image/jpeg"
                 return {
                     "type": "tool_result",
                     "tool_use_id": tool_use_id,
                     "content": [
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data["__screenshot__"]}},
+                        {"type": "image", "source": {"type": "base64", "media_type": media, "data": data["__screenshot__"]}},
                         {"type": "text", "text": f"Screen size: {data['size'][0]}x{data['size'][1]}"},
                     ],
                 }
@@ -362,8 +461,12 @@ class AgentCore:
         self.client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         self.memory = Memory()
 
-    def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False) -> str:
-        """Run a full agent turn. Returns the final text response."""
+    def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None) -> str:
+        """Run a full agent turn. Returns the final text response.
+
+        If `streamer` is provided (a StreamingSpeaker), text deltas are fed to it
+        as they arrive so the user hears the first sentence before generation finishes.
+        """
         self.memory.maybe_summarize(self.client)
 
         # Build user message content
@@ -389,6 +492,7 @@ class AgentCore:
         # Agentic tool-use loop
         max_iterations = 30
         iteration = 0
+        final_text = ""
 
         while iteration < max_iterations:
             iteration += 1
@@ -404,35 +508,56 @@ class AgentCore:
             if use_thinking:
                 kwargs["thinking"] = {"type": "enabled", "budget_tokens": config.THINKING_BUDGET}
 
-            response = self.client.messages.create(**kwargs)
-
-            # Store assistant response
-            self.memory.add_assistant(response.content)
-
-            if response.stop_reason == "end_turn":
-                # Extract final text
-                return " ".join(
-                    getattr(block, "text", "")
-                    for block in response.content
-                    if getattr(block, "type", "") == "text"
+            # Stream if we have a speaker, otherwise non-stream
+            if streamer is not None:
+                response_content, stop_reason, this_text = self._stream_turn(kwargs, streamer)
+            else:
+                resp = self.client.messages.create(**kwargs)
+                response_content = resp.content
+                stop_reason = resp.stop_reason
+                this_text = " ".join(
+                    getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
                 ).strip()
 
-            if response.stop_reason != "tool_use":
+            self.memory.add_assistant(response_content)
+            final_text = this_text
+
+            if stop_reason == "end_turn":
+                return final_text
+
+            if stop_reason != "tool_use":
                 break
 
             # Execute all tool calls
             tool_results = []
-            for block in response.content:
+            for block in response_content:
                 if getattr(block, "type", "") != "tool_use":
                     continue
-
                 print(f"[TOOL] {block.name}({json.dumps(block.input, ensure_ascii=False)[:120]})")
                 result_str = _execute_tool(block.name, block.input)
                 tool_results.append(_make_tool_result_content(block.name, block.id, result_str))
 
             self.memory.add_user(tool_results)
 
-        return "I hit my iteration limit. Something may have gone wrong — let me know how to proceed."
+        return final_text or "I hit my iteration limit. Something may have gone wrong — let me know how to proceed."
+
+    def _stream_turn(self, kwargs: dict, streamer) -> tuple[list, str, str]:
+        """Run one streamed turn, feeding text deltas to the streamer."""
+        accumulated_text = ""
+        with self.client.messages.stream(**kwargs) as stream:
+            for event in stream:
+                etype = getattr(event, "type", "")
+                if etype == "content_block_delta":
+                    delta = getattr(event, "delta", None)
+                    if delta is None:
+                        continue
+                    if getattr(delta, "type", "") == "text_delta":
+                        text = getattr(delta, "text", "")
+                        accumulated_text += text
+                        streamer.feed(text)
+            final = stream.get_final_message()
+
+        return final.content, final.stop_reason, accumulated_text.strip()
 
     def proactive_check(self, screenshot_b64: str) -> str | None:
         """Quick check: is there anything on screen worth proactively flagging?"""

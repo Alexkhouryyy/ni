@@ -30,6 +30,7 @@ def build_parser():
     p.add_argument("--think", action="store_true", help="Enable extended thinking for all queries")
     p.add_argument("--no-proactive", action="store_true", help="Disable proactive screen monitoring")
     p.add_argument("--no-screenshot", action="store_true", help="Don't auto-attach screenshot to each message")
+    p.add_argument("--wake", action="store_true", help="Hands-free wake word mode (say 'hey agent')")
     return p
 
 
@@ -93,6 +94,11 @@ def main():
             longterm.end_session(session_id, summary=agent.memory.summary)
         except Exception:
             pass
+        try:
+            from tools import browser as _b
+            _b.close()
+        except Exception:
+            pass
         if not args.text:
             speak("Signing off.")
         sys.exit(0)
@@ -109,11 +115,25 @@ def main():
     )
     speak(greeting)
 
+    # Wake word mode setup
+    wake_event = threading.Event()
+    wake_listener = None
+    if args.wake and not args.text:
+        from voice.wake import WakeWordListener
+        wake_listener = WakeWordListener(wake_phrases=config.WAKE_PHRASES)
+        wake_listener.start(on_wake=wake_event.set)
+        speak("Wake mode on. Say 'hey agent' to wake me.")
+
     # Main loop
     print("Press Ctrl+C to quit.\n")
     while not shutdown_event.is_set():
         # Get input
         if args.text:
+            user_input = listen()
+        elif args.wake:
+            # Wait for wake trigger, then do full listen
+            wake_event.wait()
+            wake_event.clear()
             user_input = listen()
         else:
             print("[Listening...]")
@@ -130,18 +150,31 @@ def main():
         if think:
             print("[Thinking deeply...]")
 
-        # Run agent
+        # Run agent — streaming when we have voice output for low-latency speak
         try:
-            response = agent.run(
-                user_input,
-                include_screenshot=not args.no_screenshot,
-                use_thinking=think,
-            )
+            if args.text:
+                response = agent.run(
+                    user_input,
+                    include_screenshot=not args.no_screenshot,
+                    use_thinking=think,
+                )
+                speak(response)
+            else:
+                from voice.streamer import StreamingSpeaker
+                streamer = StreamingSpeaker()
+                streamer.start()
+                response = agent.run(
+                    user_input,
+                    include_screenshot=not args.no_screenshot,
+                    use_thinking=think,
+                    streamer=streamer,
+                )
+                streamer.finish()
+                print(f"\nAGENT: {response}\n")
         except Exception as e:
             response = f"Something went wrong: {e}"
             print(f"[Error] {e}")
-
-        speak(response)
+            speak(response)
 
 
 def _needs_thinking(text: str) -> bool:

@@ -10,3 +10,4 @@ ddgs
 python-dotenv
 pyttsx3
 requests
+playwright

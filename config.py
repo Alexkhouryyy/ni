@@ -25,6 +25,10 @@ ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
 PROACTIVE_INTERVAL = 30         # seconds between screen checks
 PROACTIVE_ENABLED = True
 
+# Wake word
+WAKE_WORD_ENABLED = False       # set to True for hands-free always-on mode
+WAKE_PHRASES = ["hey agent", "okay agent", "ok agent"]
+
 # API keys
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")

@@ -18,7 +18,11 @@ if [[ "$(uname)" == "Linux" ]]; then
     fi
 fi
 
-# 3. .env file
+# 3. Playwright Chromium
+echo "==> Installing Playwright Chromium..."
+python3 -m playwright install chromium 2>&1 | tail -5 || echo "    (Playwright install skipped — install manually if browser tools fail)"
+
+# 4. .env file
 if [[ ! -f .env ]]; then
     cp .env.example .env
     echo ""
@@ -29,7 +33,7 @@ else
     echo "==> .env exists, leaving it alone."
 fi
 
-# 4. Verify key
+# 5. Verify key
 if grep -q "your_key_here" .env 2>/dev/null; then
     echo "WARNING: ANTHROPIC_API_KEY still set to placeholder in .env"
     echo "         Edit .env and add your real key."
