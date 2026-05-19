@@ -47,9 +47,20 @@ def main():
     print("  Proactive: ", "on" if config.PROACTIVE_ENABLED else "off")
     print("="*60 + "\n")
 
-    # Initialize agent
+    # Initialize agent + long-term memory
     from agent.core import AgentCore
+    from agent import longterm
+    longterm.init_db()
+    session_id = longterm.start_session()
+    print(f"[Memory] Session #{session_id} started. DB: {longterm.DB_PATH}")
+
+    # Load top memories into the agent's working context as a system reminder
+    memories = longterm.top_memories(limit=15)
+    if memories:
+        print(f"[Memory] Loaded {len(memories)} long-term memories.")
     agent = AgentCore()
+    if memories:
+        agent.memory.summary = longterm.format_for_context(memories)
 
     # Initialize I/O
     if args.text:
@@ -78,6 +89,10 @@ def main():
         print("\n[Agent] Shutting down...")
         shutdown_event.set()
         monitor.stop()
+        try:
+            longterm.end_session(session_id, summary=agent.memory.summary)
+        except Exception:
+            pass
         if not args.text:
             speak("Signing off.")
         sys.exit(0)

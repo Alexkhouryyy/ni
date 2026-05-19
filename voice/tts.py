@@ -1,5 +1,6 @@
 import threading
 import config
+from voice import interrupt as interrupt_mod
 
 _engine = None
 _lock = threading.Lock()
@@ -13,7 +14,6 @@ def _get_pyttsx3():
         _engine = pyttsx3.init()
         _engine.setProperty("rate", config.TTS_RATE)
         voices = _engine.getProperty("voices")
-        # prefer a natural-sounding voice if available
         for v in voices:
             if "english" in v.name.lower() or "en" in v.id.lower():
                 _engine.setProperty("voice", v.id)
@@ -21,20 +21,31 @@ def _get_pyttsx3():
     return _engine
 
 
-def speak(text: str) -> None:
-    """Speak text aloud. Blocks until done."""
+def speak(text: str, interruptible: bool = True) -> bool:
+    """Speak text aloud. Returns True if completed, False if interrupted."""
     if not text.strip():
-        return
+        return True
 
     with _lock:
         _speaking.set()
+        interrupt_mod.reset()
+
+        engine = _get_pyttsx3() if config.TTS_ENGINE != "elevenlabs" else None
+        stop_watcher = (
+            interrupt_mod.start_listening_for_interrupt(tts_engine=engine)
+            if interruptible else lambda: None
+        )
+
         try:
             if config.TTS_ENGINE == "elevenlabs" and config.ELEVENLABS_API_KEY:
                 _speak_elevenlabs(text)
             else:
                 _speak_pyttsx3(text)
         finally:
+            stop_watcher()
             _speaking.clear()
+
+        return not interrupt_mod.is_interrupted()
 
 
 def is_speaking() -> bool:
@@ -49,7 +60,6 @@ def _speak_pyttsx3(text: str) -> None:
 
 def _speak_elevenlabs(text: str) -> None:
     import requests
-    import io
     import subprocess
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{config.ELEVENLABS_VOICE_ID}/stream"
@@ -63,12 +73,10 @@ def _speak_elevenlabs(text: str) -> None:
     resp.raise_for_status()
 
     audio = b"".join(resp.iter_content(chunk_size=4096))
-    # play via ffplay (silent) or aplay
     proc = subprocess.run(
         ["ffplay", "-nodisp", "-autoexit", "-"],
         input=audio,
         capture_output=True,
     )
     if proc.returncode != 0:
-        # fallback to pyttsx3
         _speak_pyttsx3(text)

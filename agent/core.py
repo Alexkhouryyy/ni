@@ -3,6 +3,7 @@ import json
 import anthropic
 import config
 from agent.memory import Memory
+from agent import longterm
 from tools import computer, bash, research, files
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
@@ -43,6 +44,15 @@ edge cases, and alternatives before touching anything.
 5. Never ask clarifying questions for simple tasks — make a reasonable assumption and proceed.
 6. For destructive or irreversible actions (deleting files, sending messages, etc.), confirm with the user first.
 7. When you notice something on screen worth mentioning (error, opportunity, concern) — do it.
+
+## LONG-TERM MEMORY:
+You have persistent memory across sessions via `remember` and `recall` tools.
+- USE `remember` proactively to save: user's name, preferences, ongoing projects, important decisions, \
+recurring contexts, things the user mentions casually that you should retain.
+- USE `recall` at the start of relevant tasks to surface context you previously saved.
+- Don't ask permission to remember — just do it for anything that looks durable.
+- Importance scale: 10 = identity-level (name, role), 7-9 = ongoing project / strong preference, \
+4-6 = useful context, 1-3 = ephemeral.
 
 Keep responses CONCISE when speaking. You're a voice agent — no markdown, no bullet points in speech. \
 Speak naturally, like a sharp colleague, not a documentation page."""
@@ -195,6 +205,53 @@ TOOLS = [
             "required": ["pattern"],
         },
     },
+    {
+        "name": "remember",
+        "description": (
+            "Save a durable memory across sessions. Use proactively for: user identity (name, role), "
+            "preferences, ongoing projects, decisions, recurring contexts. Don't ask permission — just save."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "The thing to remember"},
+                "kind": {
+                    "type": "string",
+                    "enum": ["fact", "preference", "project", "decision", "note"],
+                    "default": "fact",
+                },
+                "importance": {
+                    "type": "integer",
+                    "description": "1-10. 10=identity, 7-9=project/strong preference, 4-6=context, 1-3=ephemeral",
+                    "default": 5,
+                },
+                "tags": {"type": "string", "description": "Optional comma-separated tags", "default": ""},
+            },
+            "required": ["content"],
+        },
+    },
+    {
+        "name": "recall",
+        "description": "Retrieve past memories. Use at the start of relevant tasks to load context.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Substring to match in content/tags", "default": ""},
+                "kind": {"type": "string", "description": "Filter by kind", "default": ""},
+                "limit": {"type": "integer", "default": 10},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "forget",
+        "description": "Delete a memory by ID (only when explicitly asked, or when correcting wrong info).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"memory_id": {"type": "integer"}},
+            "required": ["memory_id"],
+        },
+    },
 ]
 
 
@@ -247,6 +304,27 @@ def _execute_tool(name: str, inputs: dict) -> str:
 
         elif name == "find_files":
             return files.find(inputs["pattern"], inputs.get("base", "."))
+
+        elif name == "remember":
+            return longterm.remember(
+                inputs["content"],
+                kind=inputs.get("kind", "fact"),
+                importance=inputs.get("importance", 5),
+                tags=inputs.get("tags", ""),
+            )
+
+        elif name == "recall":
+            results = longterm.recall(
+                query=inputs.get("query", ""),
+                kind=inputs.get("kind", ""),
+                limit=inputs.get("limit", 10),
+            )
+            if not results:
+                return "No matching memories found."
+            return json.dumps(results, indent=2)
+
+        elif name == "forget":
+            return longterm.forget(inputs["memory_id"])
 
         else:
             return f"Unknown tool: {name}"
