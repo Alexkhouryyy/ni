@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Crucible — an investor-grade kill test for startup ideas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:      #F0EEE6;
+    --surface:    #FBFAF7;
+    --ink:        #1A1915;
+    --ink-soft:   #6B6760;
+    --line:       #E3E0D6;
+    --clay:       #D97757;
+    --clay-deep:  #BE5D43;
+    --ok:         #5B7B5B;
+    --warn:       #B5703C;
+
+    --serif: "Newsreader", "Iowan Old Style", Georgia, serif;
+    --sans:  "Inter Tight", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  html { background: var(--paper); }
+  body {
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection { background: rgba(217,119,87,.22); }
+
+  h1, h2, h3, h4 {
+    font-family: var(--serif);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin: 0;
+  }
+  h1 { font-size: clamp(44px, 7vw, 88px); line-height: 1.02; letter-spacing: -0.025em; font-weight: 400; }
+  h2 { font-size: clamp(28px, 3.6vw, 44px); line-height: 1.1; }
+  h3 { font-size: 22px; line-height: 1.25; }
+  p  { margin: 0; }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 28px; }
+  .wrap-tight { max-width: 760px; margin: 0 auto; padding: 0 28px; }
+
+  /* ───────── top bar ───────── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 28px; max-width: 1180px; margin: 0 auto;
+  }
+  .brand {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    display: inline-flex; align-items: baseline; gap: 10px;
+    cursor: pointer; user-select: none;
+  }
+  .brand .dot {
+    display: inline-block; width: 9px; height: 9px;
+    background: var(--clay); border-radius: 50%;
+    transform: translateY(-1px);
+  }
+  .brand .tag {
+    font-family: var(--sans); font-size: 12px; color: var(--ink-soft);
+    letter-spacing: 0.04em; text-transform: uppercase;
+    border-left: 1px solid var(--line); padding-left: 10px; margin-left: 2px;
+  }
+  .topbar .steps {
+    display: flex; gap: 18px; font-size: 12px; color: var(--ink-soft);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .topbar .steps span { position: relative; }
+  .topbar .steps span.is-active { color: var(--ink); }
+  .topbar .steps span.is-active::before {
+    content: ""; position: absolute; left: -10px; top: 50%;
+    width: 5px; height: 5px; background: var(--clay); border-radius: 50%;
+    transform: translateY(-50%);
+  }
+
+  /* ───────── buttons ───────── */
+  .btn {
+    font-family: var(--sans);
+    font-size: 15px; font-weight: 500;
+    padding: 13px 22px; border-radius: 10px;
+    border: 1px solid var(--clay);
+    background: var(--clay); color: var(--paper);
+    cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease;
+    line-height: 1; display: inline-flex; align-items: center; gap: 10px;
+  }
+  .btn:hover { background: var(--clay-deep); border-color: var(--clay-deep); }
+  .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .btn .arr { transition: transform .18s ease; }
+  .btn:hover .arr { transform: translateX(3px); }
+
+  .btn-ghost {
+    background: transparent; color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  .btn-ghost:hover { background: var(--surface); border-color: var(--ink-soft); color: var(--ink); }
+
+  .btn-sm { padding: 9px 14px; font-size: 13px; border-radius: 8px; }
+
+  /* ───────── screens ───────── */
+  .screen { display: none; }
+  .screen.is-on { display: block; }
+
+  /* fade-in on screen change */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .screen.is-on > * { animation: fadeUp .55s ease both; }
+
+  /* ───────── landing ───────── */
+  .landing { padding-top: 80px; padding-bottom: 120px; }
+  .landing .eyebrow {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--clay); margin-bottom: 26px; display: inline-flex; align-items: center; gap: 10px;
+  }
+  .landing .eyebrow .bar { display: inline-block; width: 28px; height: 1px; background: var(--clay); }
+  .landing h1 { max-width: 14ch; }
+  .landing h1 em { font-style: italic; color: var(--ink-soft); font-weight: 400; }
+  .landing .lede {
+    margin-top: 28px; font-size: 19px; color: var(--ink-soft);
+    max-width: 58ch; line-height: 1.55;
+  }
+  .landing .cta-row { margin-top: 44px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .landing .meta {
+    font-size: 13px; color: var(--ink-soft);
+    border-left: 1px solid var(--line); padding-left: 14px;
+  }
+
+  .landing .grid {
+    margin-top: 88px;
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+    background: var(--line); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  .landing .grid .cell {
+    background: var(--paper); padding: 22px 18px;
+    display: flex; flex-direction: column; gap: 8px;
+    min-height: 130px;
+  }
+  .landing .grid .cell .num {
+    font-family: var(--serif); font-size: 13px; color: var(--ink-soft);
+  }
+  .landing .grid .cell .label {
+    font-family: var(--serif); font-size: 17px; line-height: 1.2; letter-spacing: -0.01em;
+  }
+  .landing .grid .cell .wt {
+    margin-top: auto; font-size: 11px; color: var(--ink-soft);
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  @media (max-width: 820px) {
+    .landing .grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ───────── intake ───────── */
+  .intake { padding-top: 60px; padding-bottom: 120px; }
+  .intake .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 36px 36px 30px;
+    margin-top: 36px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.03);
+  }
+  .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 22px; }
+  .field label {
+    font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .field input, .field textarea {
+    font-family: var(--sans); font-size: 16px; line-height: 1.5;
+    color: var(--ink); background: var(--paper);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; width: 100%;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .field input:focus, .field textarea:focus {
+    outline: none; border-color: var(--ink-soft); background: var(--surface);
+  }
+  .field textarea { min-height: 130px; resize: vertical; }
+  .field .hint { font-size: 12px; color: var(--ink-soft); }
+
+  .intake .actions { margin-top: 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+  .ai-toggle {
+    margin-top: 18px; padding: 16px 18px;
+    border: 1px dashed var(--line); border-radius: 10px;
+    display: flex; align-items: flex-start; gap: 14px;
+    background: rgba(217,119,87,0.03);
+  }
+  .ai-toggle .copy { flex: 1; }
+  .ai-toggle .copy h4 {
+    font-family: var(--serif); font-weight: 500; font-size: 16px; margin-bottom: 4px;
+  }
+  .ai-toggle .copy p { font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+  .switch { position: relative; width: 38px; height: 22px; flex: 0 0 auto; margin-top: 2px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .track {
+    position: absolute; inset: 0; background: var(--line); border-radius: 999px;
+    transition: background .18s ease;
+  }
+  .switch .knob {
+    position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+    background: var(--paper); border-radius: 50%;
+    transition: transform .18s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,.1);
+  }
+  .switch input:checked + .track { background: var(--clay); }
+  .switch input:checked + .track .knob { transform: translateX(16px); }
+
+  /* ───────── diagnostic ───────── */
+  .diag { padding-top: 50px; padding-bottom: 200px; position: relative; }
+  .diag .head {
+    display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap;
+    gap: 24px; margin-bottom: 14px;
+  }
+  .diag .head .lede { color: var(--ink-soft); margin-top: 10px; max-width: 50ch; }
+
+  .diag .idea-recap {
+    margin-top: 18px; padding: 16px 18px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .diag .idea-recap .recap-title {
+    font-family: var(--serif); font-size: 18px; margin-bottom: 4px;
+  }
+  .diag .idea-recap .recap-body { font-size: 14px; color: var(--ink-soft); line-height: 1.55; }
+
+  .cards { display: flex; flex-direction: column; gap: 18px; margin-top: 36px; }
+
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 26px 28px 22px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    opacity: 0;
+    animation: cardIn .5s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .diag.is-on .card { animation-play-state: running; }
+
+  .card .top {
+    display: flex; gap: 18px; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .card .top .lhs { display: flex; gap: 14px; align-items: baseline; }
+  .card .top .num {
+    font-family: var(--serif); font-size: 14px; color: var(--ink-soft);
+    width: 22px;
+  }
+  .card .top h3 { font-size: 24px; }
+  .card .top .wt {
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft);
+    border: 1px solid var(--line); padding: 4px 8px; border-radius: 6px;
+  }
+
+  .anchors {
+    margin-top: 18px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;
+  }
+  .anchor {
+    border-top: 1px solid var(--line); padding-top: 10px;
+    font-size: 13.5px; line-height: 1.5; color: var(--ink-soft);
+  }
+  .anchor .a-num {
+    font-family: var(--serif); font-size: 12px; color: var(--clay);
+    letter-spacing: 0.04em; display: block; margin-bottom: 3px;
+  }
+  @media (max-width: 720px) {
+    .anchors { grid-template-columns: 1fr; gap: 6px; }
+  }
+
+  .slider-row {
+    margin-top: 22px;
+    display: grid; grid-template-columns: 1fr auto; gap: 22px; align-items: center;
+  }
+  .slider-wrap { position: relative; }
+  .ticks {
+    display: grid; grid-template-columns: repeat(6, 1fr);
+    margin-bottom: 6px;
+    font-family: var(--serif); font-size: 12px; color: var(--ink-soft);
+  }
+  .ticks span { text-align: center; }
+  .ticks span:first-child { text-align: left; }
+  .ticks span:last-child { text-align: right; }
+
+  input[type="range"].slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; background: transparent;
+    height: 24px;
+  }
+  input[type="range"].slider::-webkit-slider-runnable-track {
+    height: 2px; background: var(--line); border-radius: 2px;
+  }
+  input[type="range"].slider::-moz-range-track {
+    height: 2px; background: var(--line); border-radius: 2px;
+  }
+  input[type="range"].slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--clay); border: 3px solid var(--paper);
+    box-shadow: 0 0 0 1px var(--clay);
+    margin-top: -8px;
+    transition: transform .15s ease, box-shadow .15s ease;
+    cursor: grab;
+  }
+  input[type="range"].slider::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--clay); border: 3px solid var(--paper);
+    box-shadow: 0 0 0 1px var(--clay);
+    cursor: grab;
+  }
+  input[type="range"].slider:active::-webkit-slider-thumb {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 1px var(--clay), 0 0 0 6px rgba(217,119,87,.15);
+  }
+
+  .score-display {
+    font-family: var(--serif);
+    font-size: 36px; line-height: 1; color: var(--ink);
+    min-width: 64px; text-align: right;
+  }
+  .score-display .of { font-size: 14px; color: var(--ink-soft); margin-left: 2px; }
+
+  .note-field {
+    margin-top: 16px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 13px;
+  }
+  .note-field label {
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft); flex: 0 0 auto;
+  }
+  .note-field input {
+    flex: 1;
+    font-family: var(--sans); font-size: 14px; color: var(--ink);
+    background: transparent; border: none;
+    border-bottom: 1px solid var(--line);
+    padding: 6px 0;
+  }
+  .note-field input:focus { outline: none; border-bottom-color: var(--ink-soft); }
+  .note-field input::placeholder { color: var(--ink-soft); }
+
+  /* sticky composite */
+  .running {
+    position: fixed; bottom: 22px; right: 22px;
+    background: var(--ink); color: var(--paper);
+    border-radius: 12px; padding: 14px 18px;
+    display: none; align-items: center; gap: 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.18);
+    z-index: 50;
+  }
+  .running.is-on { display: inline-flex; }
+  .running .label {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    opacity: 0.65;
+  }
+  .running .val { font-family: var(--serif); font-size: 28px; line-height: 1; }
+  .running .val .of { font-size: 13px; opacity: 0.5; margin-left: 2px; }
+  .running .submit-btn {
+    background: var(--clay); color: var(--paper);
+    border: none; padding: 10px 14px; border-radius: 8px;
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: background .15s ease;
+  }
+  .running .submit-btn:hover { background: var(--clay-deep); }
+
+  /* ───────── scorecard ───────── */
+  .report { padding-top: 50px; padding-bottom: 140px; }
+  .report .head { margin-bottom: 32px; }
+  .report .eyebrow {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft); margin-bottom: 14px;
+  }
+  .report h2 .name-em { font-style: italic; font-weight: 400; }
+
+  .top-grid {
+    display: grid; grid-template-columns: 1.1fr 1fr; gap: 36px; align-items: stretch;
+    margin-top: 30px;
+  }
+  @media (max-width: 820px) {
+    .top-grid { grid-template-columns: 1fr; gap: 28px; }
+  }
+
+  .composite-panel {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 32px 32px 28px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .composite-panel .label {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .composite-panel .big {
+    font-family: var(--serif); font-size: 120px; line-height: 0.95;
+    letter-spacing: -0.04em; color: var(--ink); font-weight: 400;
+  }
+  .composite-panel .big .of {
+    font-size: 28px; color: var(--ink-soft); margin-left: 4px;
+    letter-spacing: -0.02em;
+  }
+  .verdict {
+    display: inline-flex; align-items: center; gap: 10px;
+    margin-top: 6px;
+  }
+  .verdict .pip {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--ink-soft);
+  }
+  .verdict .name {
+    font-family: var(--serif); font-size: 22px; letter-spacing: -0.01em;
+  }
+  .verdict .blurb {
+    font-size: 14px; color: var(--ink-soft); margin-top: 10px; line-height: 1.55;
+  }
+  .verdict.is-dead .pip { background: #8b3a3a; }
+  .verdict.is-fragile .pip { background: var(--warn); }
+  .verdict.is-contender .pip { background: var(--clay); }
+  .verdict.is-strong .pip { background: var(--ok); }
+
+  .radar-panel {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 24px;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 360px;
+  }
+  .radar-panel svg { width: 100%; height: auto; max-width: 440px; display: block; }
+
+  /* kill risk block */
+  .kill {
+    margin-top: 36px;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: var(--surface);
+    padding: 32px 32px 28px;
+    display: grid; grid-template-columns: 0.9fr 1.6fr; gap: 36px;
+  }
+  @media (max-width: 820px) {
+    .kill { grid-template-columns: 1fr; gap: 18px; padding: 24px; }
+  }
+  .kill .lhs .lbl {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--clay); margin-bottom: 12px;
+  }
+  .kill .lhs .what {
+    font-family: var(--serif); font-size: 34px; line-height: 1.1; letter-spacing: -0.015em;
+  }
+  .kill .lhs .gap {
+    margin-top: 14px; font-size: 13px; color: var(--ink-soft);
+    border-top: 1px solid var(--line); padding-top: 12px;
+  }
+  .kill .rhs .sentence {
+    font-family: var(--serif); font-size: 21px; line-height: 1.45;
+    color: var(--ink);
+  }
+  .kill .rhs .sentence .accent { color: var(--clay); font-style: italic; }
+
+  /* breakdown table */
+  .breakdown { margin-top: 44px; }
+  .breakdown h3 {
+    font-family: var(--serif); font-size: 20px; margin-bottom: 14px;
+  }
+  .bd-row {
+    display: grid;
+    grid-template-columns: 30px 1.4fr 60px 1.6fr 90px 70px;
+    gap: 18px; align-items: center;
+    padding: 16px 0;
+    border-top: 1px solid var(--line);
+    font-size: 14px;
+  }
+  .bd-row:last-child { border-bottom: 1px solid var(--line); }
+  .bd-row .num { font-family: var(--serif); color: var(--ink-soft); }
+  .bd-row .dim { font-family: var(--serif); font-size: 17px; }
+  .bd-row .sc { font-family: var(--serif); font-size: 22px; }
+  .bd-row .bar {
+    height: 6px; background: var(--paper); border-radius: 3px; overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .bd-row .bar > i {
+    display: block; height: 100%; background: var(--clay);
+  }
+  .bd-row .wt { font-size: 12px; color: var(--ink-soft); letter-spacing: 0.04em; text-transform: uppercase; }
+  .bd-row .contrib { font-family: var(--serif); font-size: 16px; text-align: right; color: var(--ink-soft); }
+  .bd-row.is-kill .dim, .bd-row.is-kill .sc { color: var(--clay); }
+  @media (max-width: 720px) {
+    .bd-row { grid-template-columns: 24px 1fr 50px; row-gap: 6px; }
+    .bd-row .bar, .bd-row .wt, .bd-row .contrib { grid-column: 2 / -1; }
+    .bd-row .wt { text-align: left; }
+  }
+
+  .report .footer-actions {
+    margin-top: 50px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  }
+  .report .footer-actions .restart {
+    margin-left: auto;
+  }
+  .copied {
+    font-size: 13px; color: var(--ok); opacity: 0;
+    transition: opacity .25s ease;
+  }
+  .copied.is-on { opacity: 1; }
+
+  /* AI fallback note */
+  .ai-note {
+    margin-top: 16px; padding: 12px 16px;
+    background: rgba(181,112,60,0.08);
+    border-left: 2px solid var(--warn);
+    font-size: 13px; color: var(--ink-soft);
+    border-radius: 4px;
+    display: none;
+  }
+  .ai-note.is-on { display: block; }
+
+  /* footer */
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 30px 28px; max-width: 1180px; margin: 0 auto;
+    display: flex; justify-content: space-between; gap: 16px;
+    font-size: 12px; color: var(--ink-soft); flex-wrap: wrap;
+  }
+
+  /* responsive */
+  @media (max-width: 720px) {
+    .topbar { padding: 16px 20px; }
+    .topbar .steps { display: none; }
+    .wrap, .wrap-tight { padding: 0 20px; }
+    .landing { padding-top: 56px; padding-bottom: 80px; }
+    .composite-panel { padding: 24px; }
+    .composite-panel .big { font-size: 92px; }
+    .kill .lhs .what { font-size: 26px; }
+    .kill .rhs .sentence { font-size: 18px; }
+    .card { padding: 22px 20px; }
+    .card .top h3 { font-size: 20px; }
+    .running { right: 12px; left: 12px; bottom: 12px; justify-content: space-between; }
+  }
+
+  /* ───────── print ───────── */
+  @media print {
+    @page { margin: 18mm 16mm; }
+    html, body { background: #fff; }
+    .topbar, footer, .running, .report .footer-actions, .ai-note { display: none !important; }
+    .screen { display: none !important; }
+    .screen.is-on { display: block !important; }
+    .composite-panel, .radar-panel, .kill, .card { box-shadow: none !important; }
+    .composite-panel, .radar-panel, .kill {
+      background: #fff; border: 1px solid #ccc;
+    }
+    .composite-panel .big { font-size: 84px; }
+    .top-grid { gap: 18px; }
+    .report { padding: 0; }
+    .bd-row { padding: 10px 0; }
+    body { font-size: 13px; }
+    h2 { font-size: 30px; }
+    .kill .lhs .what { font-size: 24px; }
+    .kill .rhs .sentence { font-size: 17px; }
+    .breakdown { page-break-inside: avoid; }
+    .kill { page-break-inside: avoid; }
+    .top-grid { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand" id="brand" title="Home">
+    <span class="dot"></span>Crucible<span class="tag">kill test</span>
+  </div>
+  <nav class="steps" aria-label="progress">
+    <span data-step="landing" class="is-active">01 Idea</span>
+    <span data-step="diag">02 Diagnostic</span>
+    <span data-step="report">03 Verdict</span>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ─────────── LANDING ─────────── -->
+  <section class="screen is-on" id="screen-landing">
+    <div class="landing wrap">
+      <div class="eyebrow"><span class="bar"></span>An investor-grade kill test</div>
+      <h1>Find the one reason<br/>your idea <em>dies</em> —<br/>before you write the deck.</h1>
+      <p class="lede">
+        Seven weighted dimensions. Written anchors so two people scoring the same idea
+        land close. One verdict and the single sentence of what would have to be true
+        for it to survive. No vibe checks.
+      </p>
+      <div class="cta-row">
+        <button class="btn" id="start-cta">Run the kill test <span class="arr">→</span></button>
+        <span class="meta">~ 4 minutes · no signup · nothing saved</span>
+      </div>
+
+      <div class="grid" aria-hidden="true" id="dim-grid"></div>
+    </div>
+  </section>
+
+  <!-- ─────────── INTAKE ─────────── -->
+  <section class="screen" id="screen-intake">
+    <div class="intake wrap-tight">
+      <div class="eyebrow" style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:14px;">Step 01 — The idea</div>
+      <h2>Describe what you're testing.</h2>
+      <p class="lede" style="color:var(--ink-soft);margin-top:14px;max-width:55ch;">
+        Keep it tight. The scoring is yours to do honestly — the rubric is calibrated to
+        be unkind to handwaving.
+      </p>
+
+      <div class="panel">
+        <div class="field">
+          <label for="idea-name">Name or working title</label>
+          <input id="idea-name" type="text" placeholder="e.g. Ledgerline — collaborative docs for finance teams" />
+        </div>
+        <div class="field">
+          <label for="idea-desc">Describe the idea in 2–3 sentences</label>
+          <textarea id="idea-desc" placeholder="Who is it for, what does it do, and what's the wedge? One paragraph is enough."></textarea>
+          <span class="hint">Saved in memory only; appears on the report.</span>
+        </div>
+
+        <div class="ai-toggle">
+          <label class="switch" aria-label="Let Claude score it">
+            <input type="checkbox" id="ai-toggle" />
+            <span class="track"><span class="knob"></span></span>
+          </label>
+          <div class="copy">
+            <h4>Let Claude score it</h4>
+            <p>Off by default. Manual scoring with anchors is the durable path. If toggled, prose is scored automatically; on any failure the app silently falls back to manual.</p>
+          </div>
+        </div>
+
+        <div class="ai-note" id="ai-note">
+          Claude scoring is unavailable in this environment — falling back to manual scoring with anchors.
+        </div>
+
+        <div class="actions">
+          <button class="btn" id="to-diag">Begin the diagnostic <span class="arr">→</span></button>
+          <button class="btn btn-ghost" id="back-landing">Back</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── DIAGNOSTIC ─────────── -->
+  <section class="screen" id="screen-diag">
+    <div class="diag wrap">
+      <div class="eyebrow" style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:14px;">Step 02 — Diagnostic</div>
+      <div class="head">
+        <div>
+          <h2>Score each axis against its anchor.</h2>
+          <p class="lede">Be honest about the worst case. The rubric is weighted; defensibility and timing carry the most.</p>
+        </div>
+      </div>
+
+      <div class="idea-recap" id="idea-recap">
+        <div class="recap-title" id="recap-title">Untitled idea</div>
+        <div class="recap-body" id="recap-body">No description provided.</div>
+      </div>
+
+      <div class="cards" id="cards"></div>
+
+      <div style="margin-top:36px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <button class="btn" id="see-verdict">See the verdict <span class="arr">→</span></button>
+        <button class="btn btn-ghost" id="back-intake">Back</button>
+      </div>
+    </div>
+
+    <div class="running" id="running" aria-live="polite">
+      <div>
+        <div class="label">Composite</div>
+        <div class="val"><span id="running-val">0</span><span class="of">/100</span></div>
+      </div>
+      <button class="submit-btn" id="running-submit">Verdict →</button>
+    </div>
+  </section>
+
+  <!-- ─────────── REPORT ─────────── -->
+  <section class="screen" id="screen-report">
+    <div class="report wrap">
+      <div class="head">
+        <div class="eyebrow">Step 03 — The verdict</div>
+        <h2 id="report-heading"><span class="name-em">Untitled idea</span></h2>
+        <p id="report-desc" style="color:var(--ink-soft);margin-top:12px;max-width:60ch;line-height:1.55;"></p>
+      </div>
+
+      <div class="top-grid">
+        <div class="composite-panel">
+          <div class="label">Composite score</div>
+          <div class="big"><span id="composite-val">0</span><span class="of">/100</span></div>
+          <div class="verdict" id="verdict">
+            <span class="pip"></span><span class="name" id="verdict-name">—</span>
+          </div>
+          <p class="blurb" id="verdict-blurb"></p>
+        </div>
+        <div class="radar-panel" id="radar-panel">
+          <svg id="radar" viewBox="0 0 400 400" role="img" aria-label="radar chart"></svg>
+        </div>
+      </div>
+
+      <div class="kill">
+        <div class="lhs">
+          <div class="lbl">Primary kill risk</div>
+          <div class="what" id="kill-name">—</div>
+          <div class="gap" id="kill-gap">Weighted gap: 0</div>
+        </div>
+        <div class="rhs">
+          <p class="sentence" id="kill-sentence"></p>
+        </div>
+      </div>
+
+      <div class="breakdown">
+        <h3>Per-axis breakdown</h3>
+        <div id="breakdown"></div>
+      </div>
+
+      <div class="footer-actions">
+        <button class="btn" id="copy-summary">Copy shareable summary</button>
+        <button class="btn btn-ghost" id="print-report">Print / Save as PDF</button>
+        <span class="copied" id="copied-flag">Copied to clipboard.</span>
+        <button class="btn btn-ghost restart" id="restart">Score another idea</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>Crucible — a kill test, not a vibe check.</span>
+  <span>Nothing saved. Nothing sent. Memory only.</span>
+</footer>
+
+<script>
+(() => {
+  // ─────────── data ───────────
+  const DIMENSIONS = [
+    {
+      key: 'problem',
+      name: 'Problem severity',
+      sub: 'Painkiller vs vitamin',
+      weight: 0.20,
+      anchors: {
+        0: 'Nice-to-have nobody asked for.',
+        3: 'A real annoyance — people tolerate it.',
+        5: 'Bleeding-neck. Users already hack together workarounds and pay for them.'
+      },
+      survives: 'This dies because nobody actually wants it badly enough. It survives only if you can name three people right now who would pay today to make this problem go away — and what they pay for instead.'
+    },
+    {
+      key: 'market',
+      name: 'Market & timing',
+      sub: 'Size, and "why now"',
+      weight: 0.15,
+      anchors: {
+        0: 'Tiny or shrinking market, no "why now".',
+        3: 'Real market, timing neutral.',
+        5: 'Large or fast-growing — and a specific enabling shift makes now the moment.'
+      },
+      survives: 'This dies as a feature in someone else\'s product. It survives only if you can name the specific shift (regulatory, technological, behavioural) that opened this window in the last 18 months, and why it closes if you wait two years.'
+    },
+    {
+      key: 'moat',
+      name: 'Defensibility',
+      sub: 'Moat that compounds',
+      weight: 0.22,
+      anchors: {
+        0: 'Anyone can clone it in a weekend.',
+        3: 'Some friction — brand, integration, switching cost.',
+        5: 'Compounding moat: network, data, regulatory, physical access, proprietary distribution.'
+      },
+      survives: 'This dies because it\'s cloneable. It survives only if you can name a moat that compounds with scale — and start building it in v1, not later.'
+    },
+    {
+      key: 'distro',
+      name: 'Distribution wedge',
+      sub: 'Where the first 1,000 users arrive',
+      weight: 0.16,
+      anchors: {
+        0: '"We\'ll do marketing."',
+        3: 'One plausible channel, unproven.',
+        5: 'A specific, low-cost, repeatable channel where the first 1,000 users clearly come from.'
+      },
+      survives: 'This dies in obscurity. It survives only if you can name the exact channel that delivers your first 1,000 users at near-zero cost, and test it this month.'
+    },
+    {
+      key: 'execution',
+      name: 'Execution & founder–market fit',
+      sub: 'The right team for the job',
+      weight: 0.12,
+      anchors: {
+        0: 'Founder has no edge here; build is hard.',
+        3: 'Buildable, generic team.',
+        5: 'This team is unfairly suited and the build is tractable.'
+      },
+      survives: 'This dies because someone else builds it faster. It survives only if you can articulate the unfair advantage — taste, network, technical depth, scar tissue — that lets you out-build a generic team by 3×.'
+    },
+    {
+      key: 'unit',
+      name: 'Unit economics',
+      sub: 'Revenue vs cost to serve + acquire',
+      weight: 0.10,
+      anchors: {
+        0: 'Economics likely never work.',
+        3: 'Plausible at scale, unproven.',
+        5: 'Clear path where revenue per user comfortably exceeds cost to serve and acquire.'
+      },
+      survives: 'This dies subsidising every user. It survives only if you can write the napkin math today — revenue per user minus cost to serve minus acquisition — and the answer is comfortably positive, not "at scale".'
+    },
+    {
+      key: 'competition',
+      name: 'Competitive density',
+      sub: 'Wedge incumbents can\'t copy',
+      weight: 0.05,
+      anchors: {
+        0: 'Crowded, no differentiation.',
+        3: 'Competitors exist, thin differentiation.',
+        5: 'Clear wedge incumbents structurally can\'t or won\'t copy.'
+      },
+      survives: 'This dies in a crowded room. It survives only if you can name the structural reason an incumbent won\'t copy you — channel conflict, margin cannibalisation, cultural inability — not just "we\'re faster".'
+    }
+  ];
+
+  const VERDICTS = [
+    { min: 0,  max: 39,  name: 'Likely dead',  cls: 'is-dead',
+      blurb: 'Fundamental flaw, not a polish problem. Don\'t reshape the pitch — reshape the idea.' },
+    { min: 40, max: 59,  name: 'Fragile',      cls: 'is-fragile',
+      blurb: 'Survives only if the kill risk is actively solved. Plan the experiment that disproves it.' },
+    { min: 60, max: 79,  name: 'Contender',    cls: 'is-contender',
+      blurb: 'Real shot. Sharpen the weakest axis before you raise — that\'s the question they\'ll ask first.' },
+    { min: 80, max: 100, name: 'Strong',       cls: 'is-strong',
+      blurb: 'De-risk execution and move. Speed of iteration is now the dominant variable.' }
+  ];
+
+  // ─────────── state ───────────
+  const state = {
+    screen: 'landing',
+    idea: { name: '', desc: '' },
+    aiOn: false,
+    scores: Object.fromEntries(DIMENSIONS.map(d => [d.key, 0])),
+    notes:  Object.fromEntries(DIMENSIONS.map(d => [d.key, '']))
+  };
+
+  // ─────────── helpers ───────────
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+  function compositeNow() {
+    let sum = 0;
+    for (const d of DIMENSIONS) {
+      sum += (state.scores[d.key] / 5) * d.weight;
+    }
+    return Math.round(sum * 100);
+  }
+  function killRisk() {
+    let worst = null, gap = -1;
+    for (const d of DIMENSIONS) {
+      const g = d.weight * (5 - state.scores[d.key]);
+      if (g > gap) { gap = g; worst = d; }
+    }
+    return { dim: worst, gap };
+  }
+  function verdictFor(score) {
+    return VERDICTS.find(v => score >= v.min && score <= v.max) || VERDICTS[0];
+  }
+
+  // ─────────── screen routing ───────────
+  function go(name) {
+    state.screen = name;
+    $$('.screen').forEach(s => s.classList.remove('is-on'));
+    $('#screen-' + name).classList.add('is-on');
+    $$('.steps span').forEach(s => s.classList.toggle('is-active',
+      (name === 'landing' && s.dataset.step === 'landing') ||
+      (name === 'intake'  && s.dataset.step === 'landing') ||
+      (name === 'diag'    && s.dataset.step === 'diag')    ||
+      (name === 'report'  && s.dataset.step === 'report')
+    ));
+    $('#running').classList.toggle('is-on', name === 'diag');
+    window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+  }
+
+  // ─────────── landing grid ───────────
+  function renderLandingGrid() {
+    const g = $('#dim-grid');
+    g.innerHTML = DIMENSIONS.map((d, i) => `
+      <div class="cell">
+        <div class="num">0${i + 1}</div>
+        <div class="label">${d.name}</div>
+        <div class="wt">w · ${d.weight.toFixed(2)}</div>
+      </div>
+    `).join('');
+  }
+
+  // ─────────── diagnostic cards ───────────
+  function renderCards() {
+    const wrap = $('#cards');
+    wrap.innerHTML = DIMENSIONS.map((d, i) => `
+      <article class="card" style="animation-delay:${i * 80}ms" data-key="${d.key}">
+        <div class="top">
+          <div class="lhs">
+            <div class="num">0${i + 1}</div>
+            <div>
+              <h3>${d.name}</h3>
+              <div style="font-size:13px;color:var(--ink-soft);margin-top:2px;">${d.sub}</div>
+            </div>
+          </div>
+          <div class="wt">weight · ${d.weight.toFixed(2)}</div>
+        </div>
+
+        <div class="anchors">
+          <div class="anchor"><span class="a-num">0 —</span>${d.anchors[0]}</div>
+          <div class="anchor"><span class="a-num">3 —</span>${d.anchors[3]}</div>
+          <div class="anchor"><span class="a-num">5 —</span>${d.anchors[5]}</div>
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-wrap">
+            <div class="ticks"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+            <input type="range" min="0" max="5" step="1" value="${state.scores[d.key]}" class="slider" data-key="${d.key}" aria-label="${d.name} score" />
+          </div>
+          <div class="score-display"><span data-score-for="${d.key}">${state.scores[d.key]}</span><span class="of">/5</span></div>
+        </div>
+
+        <div class="note-field">
+          <label for="note-${d.key}">Note</label>
+          <input id="note-${d.key}" type="text" placeholder="One line — evidence, source, doubt." data-note="${d.key}" value="${state.notes[d.key] || ''}" />
+        </div>
+      </article>
+    `).join('');
+
+    // wire sliders + notes
+    $$('.slider').forEach(s => {
+      s.addEventListener('input', e => {
+        const k = e.target.dataset.key;
+        const v = parseInt(e.target.value, 10);
+        state.scores[k] = v;
+        document.querySelector(`[data-score-for="${k}"]`).textContent = v;
+        $('#running-val').textContent = compositeNow();
+      });
+    });
+    $$('[data-note]').forEach(n => {
+      n.addEventListener('input', e => {
+        state.notes[e.target.dataset.note] = e.target.value;
+      });
+    });
+  }
+
+  // ─────────── radar SVG ───────────
+  function renderRadar() {
+    const svg = $('#radar');
+    const size = 400, cx = size / 2, cy = size / 2;
+    const r = 140;
+    const n = DIMENSIONS.length;
+
+    let html = '';
+
+    // grid rings
+    for (let k = 1; k <= 5; k++) {
+      const rr = (r * k) / 5;
+      const pts = [];
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        pts.push((cx + rr * Math.cos(a)).toFixed(1) + ',' + (cy + rr * Math.sin(a)).toFixed(1));
+      }
+      html += `<polygon points="${pts.join(' ')}" fill="none" stroke="var(--line)" stroke-width="1"/>`;
+    }
+
+    // axes
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      const x = cx + r * Math.cos(a);
+      const y = cy + r * Math.sin(a);
+      html += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+    }
+
+    // data polygon
+    const dpts = [];
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      const v = state.scores[DIMENSIONS[i].key] / 5;
+      dpts.push((cx + r * v * Math.cos(a)).toFixed(1) + ',' + (cy + r * v * Math.sin(a)).toFixed(1));
+    }
+    html += `<polygon points="${dpts.join(' ')}" fill="rgba(217,119,87,0.12)" stroke="var(--clay)" stroke-width="1.5" stroke-linejoin="round"/>`;
+
+    // data points
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      const v = state.scores[DIMENSIONS[i].key] / 5;
+      const x = cx + r * v * Math.cos(a);
+      const y = cy + r * v * Math.sin(a);
+      html += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--clay)"/>`;
+    }
+
+    // labels
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      const lr = r + 28;
+      const x = cx + lr * Math.cos(a);
+      const y = cy + lr * Math.sin(a);
+      let anchor = 'middle';
+      const cosA = Math.cos(a);
+      if (cosA > 0.15) anchor = 'start';
+      else if (cosA < -0.15) anchor = 'end';
+      const lbl = DIMENSIONS[i].name.replace(' & ', ' &amp; ');
+      html += `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="${anchor}" font-family="Newsreader, serif" font-size="13" fill="var(--ink)">${lbl}</text>`;
+      // score under label
+      const sx = cx + (lr + 0) * Math.cos(a);
+      const sy = cy + (lr + 0) * Math.sin(a);
+      html += `<text x="${sx.toFixed(1)}" y="${(sy + 20).toFixed(1)}" text-anchor="${anchor}" font-family="Newsreader, serif" font-size="11" fill="var(--ink-soft)">${state.scores[DIMENSIONS[i].key]}/5</text>`;
+    }
+
+    svg.innerHTML = html;
+  }
+
+  // ─────────── report ───────────
+  function renderReport() {
+    const composite = compositeNow();
+    const verdict = verdictFor(composite);
+    const kill = killRisk();
+
+    $('#report-heading').innerHTML = `<span class="name-em">${escapeHtml(state.idea.name || 'Untitled idea')}</span>`;
+    $('#report-desc').textContent = state.idea.desc || '';
+
+    $('#composite-val').textContent = composite;
+    const vEl = $('#verdict');
+    vEl.className = 'verdict ' + verdict.cls;
+    $('#verdict-name').textContent = verdict.name;
+    $('#verdict-blurb').textContent = verdict.blurb;
+
+    $('#kill-name').textContent = kill.dim.name;
+    $('#kill-gap').textContent = `Weighted gap: ${(kill.gap).toFixed(2)} · weight ${kill.dim.weight.toFixed(2)} · score ${state.scores[kill.dim.key]}/5`;
+    $('#kill-sentence').innerHTML = kill.dim.survives.replace(
+      /survives only if/i,
+      m => `<span class="accent">${m}</span>`
+    );
+
+    // breakdown
+    const bd = $('#breakdown');
+    bd.innerHTML = DIMENSIONS.map((d, i) => {
+      const sc = state.scores[d.key];
+      const isKill = d.key === kill.dim.key;
+      const contrib = ((sc / 5) * d.weight * 100).toFixed(1);
+      return `
+        <div class="bd-row ${isKill ? 'is-kill' : ''}">
+          <div class="num">0${i + 1}</div>
+          <div class="dim">${d.name}</div>
+          <div class="sc">${sc}<span style="font-size:13px;color:var(--ink-soft);">/5</span></div>
+          <div class="bar"><i style="width:${(sc / 5) * 100}%"></i></div>
+          <div class="wt">w · ${d.weight.toFixed(2)}</div>
+          <div class="contrib">+${contrib}</div>
+        </div>
+      `;
+    }).join('');
+
+    renderRadar();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
+  }
+
+  // ─────────── clipboard summary ───────────
+  function buildSummaryText() {
+    const composite = compositeNow();
+    const verdict = verdictFor(composite);
+    const kill = killRisk();
+    const lines = [];
+    lines.push(`CRUCIBLE — kill test`);
+    lines.push(`Idea: ${state.idea.name || 'Untitled'}`);
+    if (state.idea.desc) lines.push(`  ${state.idea.desc}`);
+    lines.push('');
+    lines.push(`Composite: ${composite}/100 — ${verdict.name}`);
+    lines.push(`  ${verdict.blurb}`);
+    lines.push('');
+    lines.push(`Primary kill risk: ${kill.dim.name}  (weighted gap ${kill.gap.toFixed(2)})`);
+    lines.push(`  ${kill.dim.survives}`);
+    lines.push('');
+    lines.push(`Breakdown:`);
+    for (const d of DIMENSIONS) {
+      const sc = state.scores[d.key];
+      const contrib = ((sc / 5) * d.weight * 100).toFixed(1);
+      let line = `  · ${d.name.padEnd(34)} ${sc}/5   w ${d.weight.toFixed(2)}   +${contrib}`;
+      if (state.notes[d.key]) line += `\n      note: ${state.notes[d.key]}`;
+      lines.push(line);
+    }
+    return lines.join('\n');
+  }
+
+  async function copySummary() {
+    const text = buildSummaryText();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      // fallback for environments without clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(ta);
+    }
+    const f = $('#copied-flag');
+    f.classList.add('is-on');
+    setTimeout(() => f.classList.remove('is-on'), 1800);
+  }
+
+  // ─────────── wiring ───────────
+  function wire() {
+    $('#brand').addEventListener('click', () => go('landing'));
+    $('#start-cta').addEventListener('click', () => go('intake'));
+    $('#back-landing').addEventListener('click', () => go('landing'));
+    $('#back-intake').addEventListener('click', () => go('intake'));
+
+    $('#idea-name').addEventListener('input', e => state.idea.name = e.target.value);
+    $('#idea-desc').addEventListener('input', e => state.idea.desc = e.target.value);
+
+    $('#ai-toggle').addEventListener('change', e => {
+      state.aiOn = e.target.checked;
+      // graceful degradation: no API key in this environment, silently fall back
+      $('#ai-note').classList.toggle('is-on', state.aiOn);
+    });
+
+    $('#to-diag').addEventListener('click', () => {
+      $('#recap-title').textContent = state.idea.name || 'Untitled idea';
+      $('#recap-body').textContent = state.idea.desc || 'No description provided. Score each axis honestly against the anchor.';
+      $('#running-val').textContent = compositeNow();
+      renderCards();
+      go('diag');
+    });
+
+    $('#see-verdict').addEventListener('click', () => {
+      renderReport();
+      go('report');
+    });
+    $('#running-submit').addEventListener('click', () => {
+      renderReport();
+      go('report');
+    });
+
+    $('#copy-summary').addEventListener('click', copySummary);
+    $('#print-report').addEventListener('click', () => window.print());
+    $('#restart').addEventListener('click', () => {
+      for (const d of DIMENSIONS) { state.scores[d.key] = 0; state.notes[d.key] = ''; }
+      go('intake');
+    });
+  }
+
+  // ─────────── boot ───────────
+  renderLandingGrid();
+  wire();
+})();
+</script>
+
+</body>
+</html>
