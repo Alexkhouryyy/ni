@@ -29,6 +29,21 @@ PROACTIVE_ENABLED = True
 WAKE_WORD_ENABLED = False       # set to True for hands-free always-on mode
 WAKE_PHRASES = ["hey agent", "okay agent", "ok agent"]
 
+# Awareness watchers
+AWARENESS_ENABLED = True
+AWARENESS_REVIEW_INTERVAL = 60        # seconds — how often to review event log
+AWARENESS_WATCH_PATHS = [             # file watcher dirs
+    "~/Documents", "~/Desktop", "~/Downloads",
+]
+
+# Knowledge base
+KB_INDEX_PATHS = [                    # paths to index for RAG
+    "~/Documents/notes",
+]
+
+# Multi-agent
+MAX_SUBAGENTS = 5                     # max concurrent sub-agents
+
 # API keys
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")

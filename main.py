@@ -8,9 +8,9 @@ Usage:
     python main.py --text --think   # text mode + extended thinking for all queries
 """
 import argparse
-import sys
 import os
 import signal
+import sys
 import threading
 
 # Ensure ANTHROPIC_API_KEY is set before anything else
@@ -101,9 +101,60 @@ def main():
     from agent import scheduler as sched
     sched.init(agent_run_fn=agent.run, speak_fn=speak)
 
-    # Start proactive monitor
-    from agent.proactive import ProactiveMonitor
-    monitor = ProactiveMonitor(agent, speak)
+    # Wire orchestrator with a fresh-agent factory (no shared memory)
+    from agent import orchestrator
+    def _sub_factory():
+        from agent.core import AgentCore
+        return AgentCore()
+    orchestrator.set_agent_factory(_sub_factory)
+
+    # Load self-mod overlay (system prompt addition + dynamic tools)
+    from agent import self_mod
+    n_dyn = self_mod.load_dynamic_handlers()
+    if n_dyn:
+        print(f"[SelfMod] Loaded {n_dyn} user-defined tools.")
+
+    # Knowledge base — ensure schema, optionally trigger background indexing
+    from agent import knowledge
+    knowledge.init_db()
+
+    # Awareness monitor (replaces old screenshot-only proactive)
+    if config.AWARENESS_ENABLED:
+        from agent.awareness import AwarenessMonitor
+
+        def _awareness_proactive_check(events_summary: str):
+            """Lightweight Haiku call: decide if events warrant interrupting."""
+            try:
+                resp = agent.client.messages.create(
+                    model=config.PROACTIVE_MODEL,
+                    max_tokens=200,
+                    messages=[{"role": "user", "content": (
+                        "You watch the user's desktop in the background. "
+                        "Recent events (last ~90s):\n\n" + events_summary + "\n\n"
+                        "Is there anything URGENT or genuinely useful to proactively bring up RIGHT NOW? "
+                        "Examples that warrant interrupting: an error in their work, a security concern, "
+                        "they look stuck on something obvious you could help with, an opportunity they'll miss. "
+                        "Examples that DON'T: normal app switching, routine copy-paste, mundane file edits. "
+                        "If YES, respond with a single short observation (1 sentence). "
+                        "If NO, respond with exactly: NO"
+                    )}],
+                )
+                text = resp.content[0].text.strip()
+                return None if text.upper().startswith("NO") else text
+            except Exception:
+                return None
+
+        awareness_paths = [os.path.expanduser(p) for p in config.AWARENESS_WATCH_PATHS]
+        monitor = AwarenessMonitor(
+            agent_proactive_check=_awareness_proactive_check,
+            speak_fn=speak,
+            watch_paths=awareness_paths,
+            review_interval=config.AWARENESS_REVIEW_INTERVAL,
+        )
+    else:
+        # Fall back to original screenshot-only proactive
+        from agent.proactive import ProactiveMonitor
+        monitor = ProactiveMonitor(agent, speak)
 
     shutdown_event = threading.Event()
 
@@ -118,6 +169,11 @@ def main():
         try:
             from tools import browser as _b
             _b.close()
+        except Exception:
+            pass
+        try:
+            from tools import repl as _r
+            _r.shutdown()
         except Exception:
             pass
         if not args.text:

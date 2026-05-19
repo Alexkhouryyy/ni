@@ -2,6 +2,11 @@ anthropic>=0.40.0
 apscheduler
 sentence-transformers
 mcp
+jupyter_client
+ipykernel
+watchdog
+pypdf
+pyperclip
 faster-whisper
 sounddevice
 numpy

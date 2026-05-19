@@ -6,7 +6,10 @@ from agent.memory import Memory
 from agent import longterm
 from agent import safety
 from agent import mcp_client
-from tools import computer, bash, research, files, browser
+from agent import orchestrator
+from agent import knowledge
+from agent import self_mod
+from tools import computer, bash, research, files, browser, repl
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
 research capabilities, and a bash terminal. You are running on the user's machine and can see their screen.
@@ -39,6 +42,18 @@ click buttons, submit). Use web_browse for read-only access.
 tasks (daily briefings, reminders, periodic checks). Tasks run even when you're not talking.
 - **mcp__***: Dynamically loaded tools from configured MCP servers (Slack, Notion, Gmail, Calendar, \
 etc.). If these appear, use them for integrations with the user's real data.
+- **spawn_subagent / wait_for_subagents**: For complex multi-part tasks, spawn role-specialized \
+sub-agents (researcher, coder, browser, analyst, writer, planner) IN PARALLEL. Then wait for them. \
+This is MUCH faster than doing everything sequentially. Use for "research X and also build Y" style tasks.
+- **python_exec / python_reset**: Persistent Python REPL. Variables survive across calls. \
+Use for data analysis, math, plots, anything stateful. Plots come back as images you can see.
+- **kb_search / kb_reindex**: Semantic search over the user's actual files (notes, docs, code, PDFs). \
+Use when the user asks about THEIR stuff: "what did I write about", "find that note", \
+"where in my code does X happen".
+- **update_system_prompt / register_new_tool / revert_self_mod**: Self-modification. \
+When the user gives a durable instruction ("always X", "from now on Y"), update your prompt. \
+When you notice a recurring task that needs a tool you lack, register one. \
+All self-mods persist across sessions.
 - **read_file**: Read a file
 - **write_file**: Create or overwrite a file
 - **append_file**: Append to a file
@@ -370,6 +385,123 @@ TOOLS = [
             "required": ["task_id"],
         },
     },
+    {
+        "name": "spawn_subagent",
+        "description": (
+            "Spawn a role-specialized sub-agent to work on a task in parallel. "
+            "Use for complex multi-part tasks. Returns a sub_id you can wait for. "
+            "Roles: researcher, coder, browser, analyst, writer, planner."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "role": {"type": "string", "enum": ["researcher", "coder", "browser", "analyst", "writer", "planner"]},
+                "task": {"type": "string", "description": "The full task description for the sub-agent"},
+                "use_thinking": {"type": "boolean", "default": False},
+            },
+            "required": ["role", "task"],
+        },
+    },
+    {
+        "name": "wait_for_subagents",
+        "description": "Block until specified sub-agents finish. Pass empty list to wait for all running ones.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sub_ids": {"type": "array", "items": {"type": "string"}, "default": []},
+                "timeout_seconds": {"type": "number", "default": 300},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "python_exec",
+        "description": (
+            "Run Python code in a persistent IPython kernel. Variables, imports, and dataframes "
+            "persist across calls. Plots (matplotlib) come back as images. Use for data analysis, "
+            "stats, transformations, anything you'd do in a Jupyter notebook."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"code": {"type": "string"}},
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "python_reset",
+        "description": "Restart the Python kernel — all variables cleared.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "kb_search",
+        "description": (
+            "Semantic search across the user's indexed files (notes, docs, code, PDFs). "
+            "Use this when the user asks about THEIR stuff: 'what did I write about X', "
+            "'find that note from last month', 'where in my code does Y happen'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "top_k": {"type": "integer", "default": 6},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "kb_reindex",
+        "description": "Reindex the given paths into the knowledge base.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "paths": {"type": "array", "items": {"type": "string"}},
+                "force": {"type": "boolean", "default": False},
+            },
+            "required": ["paths"],
+        },
+    },
+    {
+        "name": "update_system_prompt",
+        "description": (
+            "Self-modify: append (or replace) the system prompt with new instructions. "
+            "Use when the user gives you a durable behavioral instruction "
+            "('always X', 'from now on Y', 'stop doing Z')."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "addition": {"type": "string"},
+                "replace": {"type": "boolean", "default": False},
+            },
+            "required": ["addition"],
+        },
+    },
+    {
+        "name": "register_new_tool",
+        "description": (
+            "Self-modify: register a new Python tool at runtime. The `code` must define "
+            "`def run(inputs):` and return a string. Available immediately and persists."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "description": {"type": "string"},
+                "input_schema": {"type": "object"},
+                "code": {"type": "string", "description": "Python source defining def run(inputs): -> str"},
+            },
+            "required": ["name", "description", "input_schema", "code"],
+        },
+    },
+    {
+        "name": "revert_self_mod",
+        "description": "Revert all self-modifications (or restore the previous backup).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"restore_backup": {"type": "boolean", "default": False}},
+            "required": [],
+        },
+    },
 ]
 
 
@@ -483,7 +615,43 @@ def _execute_tool(name: str, inputs: dict) -> str:
         elif name.startswith("mcp__"):
             return mcp_client.call(name, inputs)
 
+        elif name == "spawn_subagent":
+            return orchestrator.spawn(inputs["role"], inputs["task"], inputs.get("use_thinking", False))
+        elif name == "wait_for_subagents":
+            return json.dumps(
+                orchestrator.wait_for(inputs.get("sub_ids") or None, inputs.get("timeout_seconds", 300)),
+                indent=2,
+            )
+
+        elif name == "python_exec":
+            result = repl.execute(inputs["code"])
+            return json.dumps({
+                "summary": repl.format_result(result),
+                "_images": result["images"],
+            })
+        elif name == "python_reset":
+            return repl.reset()
+
+        elif name == "kb_search":
+            results = knowledge.search(inputs["query"], inputs.get("top_k", 6))
+            return json.dumps(results, indent=2)
+        elif name == "kb_reindex":
+            return knowledge.reindex(inputs["paths"], inputs.get("force", False))
+
+        elif name == "update_system_prompt":
+            return self_mod.update_system_prompt(inputs["addition"], inputs.get("replace", False))
+        elif name == "register_new_tool":
+            return self_mod.register_new_tool(
+                inputs["name"], inputs["description"], inputs["input_schema"], inputs["code"]
+            )
+        elif name == "revert_self_mod":
+            return self_mod.revert(inputs.get("restore_backup", False))
+
         else:
+            # Try dynamic tools registered via self_mod
+            dyn_result = self_mod.dispatch(name, inputs)
+            if dyn_result is not None:
+                return dyn_result
             return f"Unknown tool: {name}"
 
     except Exception as e:
@@ -505,6 +673,26 @@ def _make_tool_result_content(name: str, tool_use_id: str, result_str: str) -> d
                         {"type": "text", "text": f"Screen size: {data['size'][0]}x{data['size'][1]}"},
                     ],
                 }
+        except Exception:
+            pass
+
+    if name == "python_exec":
+        try:
+            data = json.loads(result_str)
+            images = data.get("_images", [])
+            if images:
+                content_blocks = [{"type": "text", "text": data["summary"]}]
+                for img in images:
+                    content_blocks.append({
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": img["media_type"], "data": img["data"]},
+                    })
+                return {
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": content_blocks,
+                }
+            return {"type": "tool_result", "tool_use_id": tool_use_id, "content": data["summary"]}
         except Exception:
             pass
 
@@ -531,7 +719,13 @@ class AgentCore:
         return len(self._mcp_tools)
 
     def _all_tools(self) -> list[dict]:
-        return TOOLS + self._mcp_tools
+        return TOOLS + self._mcp_tools + self_mod.get_dynamic_tools()
+
+    def _effective_system_prompt(self) -> str:
+        overlay = self_mod.get_prompt_addition()
+        if overlay:
+            return SYSTEM_PROMPT + "\n\n## USER-SET BEHAVIORAL RULES (must follow):\n" + overlay
+        return SYSTEM_PROMPT
 
     def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None) -> str:
         """Run a full agent turn. Returns the final text response.
@@ -572,7 +766,7 @@ class AgentCore:
             kwargs = dict(
                 model=config.AGENT_MODEL,
                 max_tokens=16000,
-                system=SYSTEM_PROMPT,
+                system=self._effective_system_prompt(),
                 tools=self._all_tools(),
                 messages=self.memory.get_messages(),
             )

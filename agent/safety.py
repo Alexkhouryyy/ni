@@ -12,6 +12,9 @@ _RULES: list[tuple[str, str, re.Pattern, str]] = [
     ("write_file", "path", re.compile(r"\.ssh/(authorized_keys|config|id_)", re.I), "modifying SSH keys"),
     ("browser_click", "selector", re.compile(r"(submit|confirm|send|delete|pay|buy|purchase|place.order)", re.I), "form submission or purchase"),
     ("browser_press", "key", re.compile(r"^Enter$"), "pressing Enter (may submit a form)"),
+    ("update_system_prompt", "addition", re.compile(r".+"), "modifying the agent's own system prompt"),
+    ("register_new_tool", "name", re.compile(r".+"), "registering a new self-defined tool"),
+    ("revert_self_mod", "restore_backup", re.compile(r".*"), "reverting self-modifications"),
 ]
 
 _confirm_fn = None  # injected at startup: a callable(prompt: str) -> bool
