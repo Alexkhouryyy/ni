@@ -168,6 +168,15 @@ def main():
             return f"Agent error: {e}"
     _phone.set_agent_run_fn(_phone_agent_run)
 
+    # Telegram inbound dispatch
+    from tools import telegram as _telegram
+    def _telegram_agent_run(text: str, *, channel_id: str | None = None) -> str:
+        try:
+            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
+        except Exception as e:
+            return f"Agent error: {e}"
+    _telegram.set_agent_run_fn(_telegram_agent_run)
+
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:
         from agent.awareness import AwarenessMonitor

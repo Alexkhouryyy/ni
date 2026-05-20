@@ -16,7 +16,7 @@ from agent import reflection
 from agent import telemetry
 from agent import resilience
 from agent import skills as skills_mod
-from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen
+from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen, telegram
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
 research capabilities, and a bash terminal. You are running on the user's machine and can see their screen.
@@ -742,6 +742,18 @@ TOOLS = [
             "required": ["to", "message"],
         },
     },
+    {
+        "name": "telegram_send",
+        "description": "Send a Telegram message to a chat_id. Use proactively when something important finishes and the user is AFK or prefers Telegram over SMS.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "chat_id": {"type": ["integer", "string"], "description": "Telegram chat ID (numeric) or @username"},
+                "text": {"type": "string", "description": "Message text (≤4096 chars). Markdown supported."},
+            },
+            "required": ["chat_id", "text"],
+        },
+    },
     # --- Tier-4: Image generation ---
     {
         "name": "generate_image",
@@ -1067,6 +1079,8 @@ def _execute_tool(name: str, inputs: dict) -> str:
             return phone.sms_send(inputs["to"], inputs["body"])
         elif name == "call_user":
             return phone.voice_call(inputs["to"], inputs["message"])
+        elif name == "telegram_send":
+            return telegram.send_message(inputs["chat_id"], inputs["text"])
 
         # --- Tier-4: Image generation ---
         elif name == "generate_image":

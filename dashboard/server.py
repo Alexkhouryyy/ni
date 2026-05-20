@@ -26,6 +26,7 @@ from agent import entities as ent_mod
 from agent import reflection as refl_mod
 from agent import telemetry as tel_mod
 from tools import phone as phone_mod
+from tools import telegram as telegram_mod
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -357,6 +358,22 @@ async def twilio_inbound_voice(request: Request):
     speech_result = form.get("SpeechResult", "")
     twiml = phone_mod.dispatch_inbound_voice(from_number, speech_result or None)
     return Response(content=twiml, media_type="application/xml")
+
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    update = await request.json()
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, lambda: telegram_mod.dispatch_inbound(update))
+    return {"ok": True}
+
+
+@app.get("/api/telegram/status")
+def telegram_status():
+    return {
+        "configured": telegram_mod.is_configured(),
+        "allowed_chat_ids": getattr(config, "TELEGRAM_ALLOWED_CHAT_IDS", []),
+    }
 
 
 # --- Chat ---
