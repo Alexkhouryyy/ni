@@ -106,6 +106,99 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_mem_importance ON memories(importance DESC, ts DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_mem_kind ON memories(kind)")
 
+        # --- Tier-4: reflection engine ---
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS reflections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                kind TEXT NOT NULL,             -- pattern|insight|correction|stale_memory_flag|entity_extract
+                content TEXT NOT NULL,
+                source_session_ids TEXT DEFAULT '',
+                confidence REAL DEFAULT 0.5,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending|applied|rejected
+                action_json TEXT DEFAULT ''     -- structured action to apply if accepted
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_refl_status ON reflections(status, ts DESC)")
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS memory_audit (
+                memory_id INTEGER PRIMARY KEY,
+                last_verified_at REAL,
+                confidence REAL DEFAULT 1.0,
+                supersedes_id INTEGER
+            )
+        """)
+
+        # --- Tier-4: knowledge graph ---
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL,             -- person|project|place|concept|tool|file|event|org
+                properties_json TEXT DEFAULT '{}',
+                embedding BLOB,
+                created_at REAL NOT NULL,
+                last_seen REAL NOT NULL,
+                importance INTEGER DEFAULT 5
+            )
+        """)
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ent_name_kind ON entities(name, kind)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ent_kind ON entities(kind, importance DESC)")
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_id INTEGER NOT NULL,
+                to_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                properties_json TEXT DEFAULT '{}',
+                ts REAL NOT NULL,
+                confidence REAL DEFAULT 1.0,
+                FOREIGN KEY(from_id) REFERENCES entities(id),
+                FOREIGN KEY(to_id) REFERENCES entities(id)
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_rel_from ON relations(from_id, kind)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_rel_to ON relations(to_id, kind)")
+
+        # --- Tier-4: usage telemetry ---
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                session_id INTEGER,
+                turn_index INTEGER,
+                call_site TEXT NOT NULL,        -- agent.core/stream | agent.memory | agent.goals | ...
+                model TEXT NOT NULL,
+                input_tokens INTEGER DEFAULT 0,
+                cache_read_tokens INTEGER DEFAULT 0,
+                cache_creation_tokens INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                thinking_tokens INTEGER DEFAULT 0,
+                latency_ms INTEGER DEFAULT 0,
+                cost_usd REAL DEFAULT 0.0,
+                tool_calls_json TEXT DEFAULT '[]',
+                stop_reason TEXT DEFAULT ''
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(ts DESC)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_log(session_id, turn_index)")
+
+        # --- Tier-4: per-turn log for episode replay ---
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS turn_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                session_id INTEGER,
+                turn_index INTEGER,
+                role TEXT NOT NULL,             -- user|assistant|tool_result
+                content_json TEXT NOT NULL,
+                tool_calls_json TEXT DEFAULT '[]'
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_turn_session ON turn_log(session_id, turn_index)")
+
 
 @contextmanager
 def _conn():

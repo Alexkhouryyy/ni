@@ -10,7 +10,10 @@ from agent import orchestrator
 from agent import knowledge
 from agent import self_mod
 from agent import goals
-from tools import computer, bash, research, files, browser, repl, vision
+from agent import entities
+from agent import reflection
+from agent import telemetry
+from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
 research capabilities, and a bash terminal. You are running on the user's machine and can see their screen.
@@ -63,6 +66,21 @@ then click_mark(N) to pick the right element. This is dramatically more reliable
 When the user expresses a goal ("I want to launch by June", "this week I want to ship X"), \
 call set_goal. After meaningful progress on a goal, call update_goal with a progress_note. \
 At the end of work sessions or when asked "how have I been doing?", call evaluate_recent_work.
+- **entity_upsert / entity_relate / entity_query / entity_graph**: Knowledge graph. \
+When the user mentions a PERSON, PROJECT, PLACE, or recurring CONCEPT — call entity_upsert. \
+When they describe a relationship ("Sam is my co-founder", "the launch depends on the backend"), \
+call entity_relate. When asked about someone/something, call entity_query first to load the graph context. \
+Build the graph as you talk — it's how you remember structurally.
+- **reflect_now / list_reflections / apply_reflection**: Closed-loop learning. \
+You consolidate the day's events nightly via a cron — but if the user asks "what did you learn?" \
+or "review the week", run reflect_now and present the pending reflections. \
+apply_reflection(id, accept=True/False) commits or rejects a pending insight.
+- **sms_send / call_user**: Phone reach. When the user is AFK or a scheduled task finishes \
+something important, SMS them. Use call_user only for things that genuinely warrant a phone ring.
+- **generate_image**: Create images from a text prompt (logos, hero shots, diagrams, mockups). \
+Returns local file paths. Reference them in your reply.
+- **usage_summary / replay_session**: Self-observability. Use when the user asks about cost, \
+token usage, cache performance, or wants to debug what happened in a past session.
 - **read_file**: Read a file
 - **write_file**: Create or overwrite a file
 - **append_file**: Append to a file
@@ -606,6 +624,155 @@ TOOLS = [
             "required": [],
         },
     },
+    # --- Tier-4: Knowledge Graph (entities + relations) ---
+    {
+        "name": "entity_upsert",
+        "description": "Create or update an entity in the knowledge graph. Use whenever the user mentions a person, project, place, tool, or recurring concept.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "kind": {"type": "string", "enum": ["person", "project", "place", "concept", "tool", "file", "event", "org"]},
+                "properties": {"type": "object", "description": "Arbitrary JSON properties (role, status, dates, notes)"},
+                "importance": {"type": "integer", "default": 5},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "entity_relate",
+        "description": "Create a typed directed edge between two entities. Both are upserted if missing. Use for any explicit or implicit relationship ('Sam is co-founder of NI', 'launch depends on backend').",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "from_name": {"type": "string"},
+                "to_name": {"type": "string"},
+                "kind": {"type": "string", "description": "Verb-phrase: 'co-founder', 'depends_on', 'lives_in', 'uses', 'created_by'"},
+                "from_kind": {"type": "string", "default": "concept"},
+                "to_kind": {"type": "string", "default": "concept"},
+                "properties": {"type": "object"},
+                "confidence": {"type": "number", "default": 1.0},
+            },
+            "required": ["from_name", "to_name", "kind"],
+        },
+    },
+    {
+        "name": "entity_query",
+        "description": "Look up an entity by name + return its neighbours within N hops. Call this before answering questions about a person, project, or concept the user mentions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "hops": {"type": "integer", "default": 1},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "entity_graph",
+        "description": "Return a subgraph of nodes + edges (default: top-importance slice). Useful for surveying what you know about a domain.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entity_names": {"type": "array", "items": {"type": "string"}},
+                "limit_nodes": {"type": "integer", "default": 100},
+            },
+            "required": [],
+        },
+    },
+    # --- Tier-4: Reflection Engine ---
+    {
+        "name": "reflect_now",
+        "description": "Run the consolidation pass right now: reviews the last N hours of activity and writes reflections. High-confidence ones auto-apply (new memories, entities, goal progress). Returns counts.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"hours": {"type": "integer", "default": 24}},
+            "required": [],
+        },
+    },
+    {
+        "name": "list_reflections",
+        "description": "List pending (or applied/rejected) reflections from the consolidation engine.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["pending", "applied", "rejected"], "default": "pending"},
+                "limit": {"type": "integer", "default": 50},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "apply_reflection",
+        "description": "Accept or reject a pending reflection by id. Accepting commits its action (remember/forget/entity/relate/goal_progress).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reflection_id": {"type": "integer"},
+                "accept": {"type": "boolean", "default": True},
+            },
+            "required": ["reflection_id"],
+        },
+    },
+    # --- Tier-4: Phone (Twilio) ---
+    {
+        "name": "sms_send",
+        "description": "Send an SMS via Twilio to the user (or another allowed number). Use proactively when something important finishes and the user is AFK.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "E.164 number, e.g. +14155551234"},
+                "body": {"type": "string", "description": "Message text (≤1500 chars)"},
+            },
+            "required": ["to", "body"],
+        },
+    },
+    {
+        "name": "call_user",
+        "description": "Place an outbound voice call via Twilio that speaks `message` then hangs up. Use sparingly — only for genuinely urgent things.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string"},
+                "message": {"type": "string"},
+            },
+            "required": ["to", "message"],
+        },
+    },
+    # --- Tier-4: Image generation ---
+    {
+        "name": "generate_image",
+        "description": "Generate an image from a text prompt (Replicate/FLUX). Returns saved local file paths.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string"},
+                "model": {"type": "string", "description": "Replicate model id, default flux-schnell"},
+                "size": {"type": "string", "default": "1024x1024"},
+                "n": {"type": "integer", "default": 1},
+            },
+            "required": ["prompt"],
+        },
+    },
+    # --- Tier-4: Telemetry / Replay ---
+    {
+        "name": "usage_summary",
+        "description": "Return token usage, cost, and cache hit rate for the last N days.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"days": {"type": "integer", "default": 7}},
+            "required": [],
+        },
+    },
+    {
+        "name": "replay_session",
+        "description": "Return chronological turns + per-call usage for a past session (for self-debugging or 'what happened yesterday' questions).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"session_id": {"type": "integer"}},
+            "required": ["session_id"],
+        },
+    },
 ]
 
 
@@ -793,6 +960,68 @@ def _execute_tool(name: str, inputs: dict) -> str:
             client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
             return goals.evaluate_recent_work(client, days=inputs.get("days", 7))
 
+        # --- Tier-4: Knowledge Graph ---
+        elif name == "entity_upsert":
+            return json.dumps(entities.upsert_entity(
+                inputs["name"],
+                kind=inputs.get("kind", "concept"),
+                properties=inputs.get("properties") or {},
+                importance=int(inputs.get("importance", 5)),
+            ), indent=2, default=str)
+        elif name == "entity_relate":
+            return json.dumps(entities.relate(
+                inputs["from_name"], inputs["to_name"], inputs["kind"],
+                properties=inputs.get("properties") or {},
+                from_kind=inputs.get("from_kind", "concept"),
+                to_kind=inputs.get("to_kind", "concept"),
+                confidence=float(inputs.get("confidence", 1.0)),
+            ), indent=2, default=str)
+        elif name == "entity_query":
+            return json.dumps(entities.query_entity(
+                inputs["name"], hops=int(inputs.get("hops", 1))
+            ), indent=2, default=str)
+        elif name == "entity_graph":
+            return json.dumps(entities.subgraph(
+                entity_names=inputs.get("entity_names"),
+                limit_nodes=int(inputs.get("limit_nodes", 100)),
+            ), indent=2, default=str)
+
+        # --- Tier-4: Reflection ---
+        elif name == "reflect_now":
+            client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+            return json.dumps(reflection.consolidate(client, hours=int(inputs.get("hours", 24))), indent=2)
+        elif name == "list_reflections":
+            return json.dumps(reflection.list_reflections(
+                status=inputs.get("status", "pending"),
+                limit=int(inputs.get("limit", 50)),
+            ), indent=2, default=str)
+        elif name == "apply_reflection":
+            return reflection.apply_reflection(
+                int(inputs["reflection_id"]),
+                accept=bool(inputs.get("accept", True)),
+            )
+
+        # --- Tier-4: Phone ---
+        elif name == "sms_send":
+            return phone.sms_send(inputs["to"], inputs["body"])
+        elif name == "call_user":
+            return phone.voice_call(inputs["to"], inputs["message"])
+
+        # --- Tier-4: Image generation ---
+        elif name == "generate_image":
+            return image_gen.generate_image(
+                inputs["prompt"],
+                model=inputs.get("model"),
+                size=inputs.get("size", "1024x1024"),
+                n=int(inputs.get("n", 1)),
+            )
+
+        # --- Tier-4: Telemetry / Replay ---
+        elif name == "usage_summary":
+            return json.dumps(telemetry.summary(days=int(inputs.get("days", 7))), indent=2)
+        elif name == "replay_session":
+            return json.dumps(telemetry.replay_session(int(inputs["session_id"])), indent=2, default=str)
+
         else:
             # Try dynamic tools registered via self_mod
             dyn_result = self_mod.dispatch(name, inputs)
@@ -911,6 +1140,13 @@ class AgentCore:
         user_content.append({"type": "text", "text": user_text})
         self.memory.add_user(user_content)
 
+        # Telemetry: new turn
+        telemetry.bump_turn()
+        try:
+            telemetry.log_turn("user", {"text": user_text})
+        except Exception:
+            pass
+
         # Agentic tool-use loop
         max_iterations = 30
         iteration = 0
@@ -934,7 +1170,7 @@ class AgentCore:
             if streamer is not None:
                 response_content, stop_reason, this_text = self._stream_turn(kwargs, streamer)
             else:
-                resp = self.client.messages.create(**kwargs)
+                resp = telemetry.create(self.client, call_site="agent.core/main", **kwargs)
                 response_content = resp.content
                 stop_reason = resp.stop_reason
                 this_text = " ".join(
@@ -943,6 +1179,16 @@ class AgentCore:
 
             self.memory.add_assistant(response_content)
             final_text = this_text
+
+            # Per-turn log for replay
+            try:
+                tc = [
+                    {"name": getattr(b, "name", ""), "id": getattr(b, "id", ""), "input": getattr(b, "input", {})}
+                    for b in response_content if getattr(b, "type", "") == "tool_use"
+                ]
+                telemetry.log_turn("assistant", {"text": this_text}, tool_calls=tc)
+            except Exception:
+                pass
 
             if stop_reason == "end_turn":
                 return final_text
@@ -958,6 +1204,10 @@ class AgentCore:
                 print(f"[TOOL] {block.name}({json.dumps(block.input, ensure_ascii=False)[:120]})")
                 result_str = _execute_tool(block.name, block.input)
                 tool_results.append(_make_tool_result_content(block.name, block.id, result_str))
+                try:
+                    telemetry.log_turn("tool_result", {"tool": block.name, "preview": result_str[:400]})
+                except Exception:
+                    pass
 
             self.memory.add_user(tool_results)
 
@@ -965,7 +1215,9 @@ class AgentCore:
 
     def _stream_turn(self, kwargs: dict, streamer) -> tuple[list, str, str]:
         """Run one streamed turn, feeding text deltas to the streamer."""
+        import time as _time
         accumulated_text = ""
+        start = _time.time()
         with self.client.messages.stream(**kwargs) as stream:
             for event in stream:
                 etype = getattr(event, "type", "")
@@ -979,11 +1231,26 @@ class AgentCore:
                         streamer.feed(text)
             final = stream.get_final_message()
 
+        latency_ms = int((_time.time() - start) * 1000)
+        tool_calls = [
+            {"name": getattr(b, "name", ""), "id": getattr(b, "id", "")}
+            for b in final.content if getattr(b, "type", "") == "tool_use"
+        ]
+        telemetry.record(
+            call_site="agent.core/stream",
+            model=kwargs.get("model", "?"),
+            usage=getattr(final, "usage", None),
+            latency_ms=latency_ms,
+            stop_reason=getattr(final, "stop_reason", "") or "",
+            tool_calls=tool_calls,
+        )
         return final.content, final.stop_reason, accumulated_text.strip()
 
     def proactive_check(self, screenshot_b64: str) -> str | None:
         """Quick check: is there anything on screen worth proactively flagging?"""
-        resp = self.client.messages.create(
+        resp = telemetry.create(
+            self.client,
+            call_site="agent.core/proactive_check",
             model=config.PROACTIVE_MODEL,
             max_tokens=256,
             messages=[{

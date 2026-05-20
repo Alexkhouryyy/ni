@@ -73,6 +73,128 @@ def listen() -> str:
     return text
 
 
+def warm_up() -> None:
+    """Pre-load and pre-run Whisper on a silent buffer so the first real call is fast."""
+    try:
+        model = _get_model()
+        silence = np.zeros(int(config.SAMPLE_RATE * 0.5), dtype=np.float32)
+        # Burn one transcribe call so the kernel is hot
+        try:
+            segments, _ = model.transcribe(silence, language="en", beam_size=1)
+            for _ in segments:
+                pass
+        except Exception:
+            pass
+        print("[STT] Pre-warm complete.")
+    except Exception as e:
+        print(f"[STT] Pre-warm skipped: {e}")
+
+
+def listen_streaming(
+    on_partial=None,
+    on_final=None,
+    partial_interval_ms: int = None,
+    end_silence_s: float = None,
+) -> str:
+    """Record from mic with rolling partial transcription.
+
+    Calls `on_partial(text)` every `partial_interval_ms` while you speak.
+    Returns the final transcript once silence ≥ end_silence_s AND last two
+    partials are stable. Calls `on_final(text)` once before returning.
+
+    Falls back to plain `listen()` if streaming deps aren't available.
+    """
+    import sounddevice as sd
+
+    partial_interval = (partial_interval_ms or getattr(config, "PARTIAL_INTERVAL_MS", 500)) / 1000.0
+    end_silence = end_silence_s if end_silence_s is not None else config.SILENCE_DURATION
+
+    audio_queue: queue.Queue = queue.Queue()
+    recording: list = []
+
+    def callback(indata, frames, time_info, status):
+        audio_queue.put(indata.copy())
+
+    stream = sd.InputStream(
+        samplerate=config.SAMPLE_RATE,
+        channels=1,
+        dtype="float32",
+        callback=callback,
+        blocksize=int(config.SAMPLE_RATE * 0.1),
+    )
+
+    model = _get_model()
+    print("[STT] Streaming listen... (speak now)")
+    silence_start = None
+    total_duration = 0.0
+    has_speech = False
+    last_partial = ""
+    second_last_partial = None
+    last_partial_at = time.time()
+    stable_streak = 0
+
+    with stream:
+        while True:
+            chunk = audio_queue.get()
+            recording.append(chunk)
+            total_duration += len(chunk) / config.SAMPLE_RATE
+
+            rms = float(np.sqrt(np.mean(chunk ** 2)))
+            if rms > config.SILENCE_THRESHOLD:
+                has_speech = True
+                silence_start = None
+            elif has_speech:
+                if silence_start is None:
+                    silence_start = time.time()
+
+            # Periodically transcribe what we have so far
+            now = time.time()
+            if has_speech and (now - last_partial_at) >= partial_interval:
+                audio = np.concatenate(recording, axis=0).flatten()
+                try:
+                    segments, _ = model.transcribe(audio, language="en", beam_size=1, vad_filter=True)
+                    partial = " ".join(seg.text.strip() for seg in segments).strip()
+                except Exception:
+                    partial = last_partial
+                if partial and partial != last_partial:
+                    if on_partial:
+                        try:
+                            on_partial(partial)
+                        except Exception:
+                            pass
+                    second_last_partial = last_partial
+                    last_partial = partial
+                    stable_streak = 0
+                elif partial == last_partial and partial:
+                    stable_streak += 1
+                last_partial_at = now
+
+            # End-of-utterance: silence elapsed AND partials stable
+            if has_speech and silence_start is not None:
+                if (now - silence_start) >= end_silence and stable_streak >= 1:
+                    break
+                if (now - silence_start) >= (end_silence + 1.0):
+                    break  # hard fallback
+
+            if total_duration >= config.MAX_RECORD_SECONDS:
+                break
+
+    if not has_speech:
+        return ""
+
+    # Final clean transcription with higher beam size
+    audio = np.concatenate(recording, axis=0).flatten()
+    segments, _ = model.transcribe(audio, language="en", beam_size=5)
+    text = " ".join(seg.text.strip() for seg in segments).strip() or last_partial
+    print(f"[STT] Final: {text!r}")
+    if on_final:
+        try:
+            on_final(text)
+        except Exception:
+            pass
+    return text
+
+
 def listen_for_wake_word(wake_words: list[str] = None) -> str:
     """Keep listening until a wake word is detected, then do a full listen."""
     if wake_words is None:
