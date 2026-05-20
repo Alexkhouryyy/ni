@@ -1,0 +1,15 @@
+"""Example skill — copy to a .py file and customize."""
+DESCRIPTION = "Example: echoes the input text back."
+VERSION = "1.0"
+
+INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "text": {"type": "string"},
+    },
+    "required": ["text"],
+}
+
+
+def run(inputs: dict) -> str:
+    return f"Echo: {inputs['text']}"

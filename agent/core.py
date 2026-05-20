@@ -15,6 +15,7 @@ from agent import entities
 from agent import reflection
 from agent import telemetry
 from agent import resilience
+from agent import skills as skills_mod
 from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
@@ -793,6 +794,46 @@ TOOLS = [
             "required": ["query"],
         },
     },
+    # --- Skills registry ---
+    {
+        "name": "list_skills",
+        "description": "List all installed skills — reusable Python capability modules that extend the agent.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "run_skill",
+        "description": (
+            "Execute an installed skill by name with the given inputs. "
+            "Call list_skills first if you're unsure what's available."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Skill name (as returned by list_skills)"},
+                "inputs": {"type": "object", "description": "Inputs for the skill (skill-specific)"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "create_skill",
+        "description": (
+            "Create a new persistent skill as a Python file under skills/. "
+            "The code must define `def run(inputs: dict) -> str`. "
+            "Use when the user asks you to build a reusable tool or when you identify "
+            "a repeated pattern worth packaging."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Snake-case identifier, e.g. 'format_invoice'"},
+                "description": {"type": "string"},
+                "code": {"type": "string", "description": "Python source. Must define def run(inputs: dict) -> str"},
+                "version": {"type": "string", "default": "1.0"},
+            },
+            "required": ["name", "description", "code"],
+        },
+    },
 ]
 
 
@@ -1048,6 +1089,19 @@ def _execute_tool(name: str, inputs: dict) -> str:
                 session_id=inputs.get("session_id"),
             )
             return json.dumps(results, indent=2, default=str)
+
+        # --- Skills registry ---
+        elif name == "list_skills":
+            return json.dumps(skills_mod.list_skills(), indent=2)
+        elif name == "run_skill":
+            return skills_mod.run_skill(inputs["name"], inputs.get("inputs") or {})
+        elif name == "create_skill":
+            return skills_mod.create_skill(
+                inputs["name"],
+                inputs["description"],
+                inputs["code"],
+                version=inputs.get("version", "1.0"),
+            )
 
         else:
             # Try dynamic tools registered via self_mod

@@ -118,6 +118,12 @@ def main():
     if n_dyn:
         print(f"[SelfMod] Loaded {n_dyn} user-defined tools.")
 
+    # Load skills registry
+    from agent import skills as skills_mod
+    n_skills = skills_mod.load_all()
+    if n_skills:
+        print(f"[Skills] Loaded {n_skills} skill(s).")
+
     # Knowledge base — ensure schema, optionally trigger background indexing
     from agent import knowledge
     knowledge.init_db()
