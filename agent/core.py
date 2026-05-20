@@ -1,5 +1,6 @@
 """Core Claude agent with tool use, extended thinking, and screen vision."""
 import json
+import threading
 import anthropic
 import config
 from agent.memory import Memory
@@ -1084,6 +1085,7 @@ class AgentCore:
         self.memory = Memory()
         self._mcp_tools: list[dict] = []
         self._mcp_loaded = False
+        self._run_lock = threading.Lock()
 
     def load_mcp_tools(self) -> int:
         """Discover MCP servers and register their tools. Returns count added."""
@@ -1117,101 +1119,106 @@ class AgentCore:
 
         If `streamer` is provided (a StreamingSpeaker), text deltas are fed to it
         as they arrive so the user hears the first sentence before generation finishes.
+
+        Serialized by `self._run_lock`: a turn mutates `self.memory` across many
+        steps, and multiple threads (main loop, scheduler, dashboard chat, phone
+        webhooks) share one AgentCore instance. The lock makes turns sequential.
         """
-        self.memory.maybe_summarize(self.client)
+        with self._run_lock:
+            self.memory.maybe_summarize(self.client)
 
-        # Build user message content
-        user_content: list = []
+            # Build user message content
+            user_content: list = []
 
-        if self.memory.context_prefix():
-            user_content.append({"type": "text", "text": self.memory.context_prefix()})
+            if self.memory.context_prefix():
+                user_content.append({"type": "text", "text": self.memory.context_prefix()})
 
-        if include_screenshot:
+            if include_screenshot:
+                try:
+                    b64, size = computer.screenshot()
+                    user_content.append({
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
+                    })
+                    user_content.append({"type": "text", "text": f"[Current screen — {size[0]}x{size[1]}]"})
+                except Exception as e:
+                    user_content.append({"type": "text", "text": f"[Screenshot unavailable: {e}]"})
+
+            user_content.append({"type": "text", "text": user_text})
+            self.memory.add_user(user_content)
+
+            # Telemetry: new turn
+            telemetry.bump_turn()
             try:
-                b64, size = computer.screenshot()
-                user_content.append({
-                    "type": "image",
-                    "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
-                })
-                user_content.append({"type": "text", "text": f"[Current screen — {size[0]}x{size[1]}]"})
-            except Exception as e:
-                user_content.append({"type": "text", "text": f"[Screenshot unavailable: {e}]"})
-
-        user_content.append({"type": "text", "text": user_text})
-        self.memory.add_user(user_content)
-
-        # Telemetry: new turn
-        telemetry.bump_turn()
-        try:
-            telemetry.log_turn("user", {"text": user_text})
-        except Exception:
-            pass
-
-        # Agentic tool-use loop
-        max_iterations = 30
-        iteration = 0
-        final_text = ""
-
-        while iteration < max_iterations:
-            iteration += 1
-
-            kwargs = dict(
-                model=config.AGENT_MODEL,
-                max_tokens=16000,
-                system=self._effective_system_prompt(),
-                tools=self._all_tools(),
-                messages=self.memory.get_messages(),
-            )
-
-            if use_thinking:
-                kwargs["thinking"] = {"type": "enabled", "budget_tokens": config.THINKING_BUDGET}
-
-            # Stream if we have a speaker, otherwise non-stream
-            if streamer is not None:
-                response_content, stop_reason, this_text = self._stream_turn(kwargs, streamer)
-            else:
-                resp = telemetry.create(self.client, call_site="agent.core/main", **kwargs)
-                response_content = resp.content
-                stop_reason = resp.stop_reason
-                this_text = " ".join(
-                    getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
-                ).strip()
-
-            self.memory.add_assistant(response_content)
-            final_text = this_text
-
-            # Per-turn log for replay
-            try:
-                tc = [
-                    {"name": getattr(b, "name", ""), "id": getattr(b, "id", ""), "input": getattr(b, "input", {})}
-                    for b in response_content if getattr(b, "type", "") == "tool_use"
-                ]
-                telemetry.log_turn("assistant", {"text": this_text}, tool_calls=tc)
+                telemetry.log_turn("user", {"text": user_text})
             except Exception:
                 pass
 
-            if stop_reason == "end_turn":
-                return final_text
+            # Agentic tool-use loop
+            max_iterations = 30
+            iteration = 0
+            final_text = ""
 
-            if stop_reason != "tool_use":
-                break
+            while iteration < max_iterations:
+                iteration += 1
 
-            # Execute all tool calls
-            tool_results = []
-            for block in response_content:
-                if getattr(block, "type", "") != "tool_use":
-                    continue
-                print(f"[TOOL] {block.name}({json.dumps(block.input, ensure_ascii=False)[:120]})")
-                result_str = _execute_tool(block.name, block.input)
-                tool_results.append(_make_tool_result_content(block.name, block.id, result_str))
+                kwargs = dict(
+                    model=config.AGENT_MODEL,
+                    max_tokens=16000,
+                    system=self._effective_system_prompt(),
+                    tools=self._all_tools(),
+                    messages=self.memory.get_messages(),
+                )
+
+                if use_thinking:
+                    kwargs["thinking"] = {"type": "enabled", "budget_tokens": config.THINKING_BUDGET}
+
+                # Stream if we have a speaker, otherwise non-stream
+                if streamer is not None:
+                    response_content, stop_reason, this_text = self._stream_turn(kwargs, streamer)
+                else:
+                    resp = telemetry.create(self.client, call_site="agent.core/main", **kwargs)
+                    response_content = resp.content
+                    stop_reason = resp.stop_reason
+                    this_text = " ".join(
+                        getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
+                    ).strip()
+
+                self.memory.add_assistant(response_content)
+                final_text = this_text
+
+                # Per-turn log for replay
                 try:
-                    telemetry.log_turn("tool_result", {"tool": block.name, "preview": result_str[:400]})
+                    tc = [
+                        {"name": getattr(b, "name", ""), "id": getattr(b, "id", ""), "input": getattr(b, "input", {})}
+                        for b in response_content if getattr(b, "type", "") == "tool_use"
+                    ]
+                    telemetry.log_turn("assistant", {"text": this_text}, tool_calls=tc)
                 except Exception:
                     pass
 
-            self.memory.add_user(tool_results)
+                if stop_reason == "end_turn":
+                    return final_text
 
-        return final_text or "I hit my iteration limit. Something may have gone wrong — let me know how to proceed."
+                if stop_reason != "tool_use":
+                    break
+
+                # Execute all tool calls
+                tool_results = []
+                for block in response_content:
+                    if getattr(block, "type", "") != "tool_use":
+                        continue
+                    print(f"[TOOL] {block.name}({json.dumps(block.input, ensure_ascii=False)[:120]})")
+                    result_str = _execute_tool(block.name, block.input)
+                    tool_results.append(_make_tool_result_content(block.name, block.id, result_str))
+                    try:
+                        telemetry.log_turn("tool_result", {"tool": block.name, "preview": result_str[:400]})
+                    except Exception:
+                        pass
+
+                self.memory.add_user(tool_results)
+
+            return final_text or "I hit my iteration limit. Something may have gone wrong — let me know how to proceed."
 
     def _stream_turn(self, kwargs: dict, streamer) -> tuple[list, str, str]:
         """Run one streamed turn, feeding text deltas to the streamer."""
