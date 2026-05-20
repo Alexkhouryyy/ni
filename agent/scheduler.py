@@ -126,7 +126,12 @@ def _fire_task(task_id: str, description: str) -> None:
             (time.time(), task_id),
         )
     try:
-        response = _agent_run_fn(description, include_screenshot=True, use_thinking=False)
+        response = _agent_run_fn(
+            description,
+            include_screenshot=True,
+            use_thinking=False,
+            channel_id=f"scheduler:{task_id}",
+        )
         if _speak_fn and response:
             _speak_fn(response)
     except Exception as e:

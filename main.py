@@ -155,9 +155,9 @@ def main():
 
     # Twilio inbound dispatch — wire agent.run so SMS/voice webhooks have a brain
     from tools import phone as _phone
-    def _phone_agent_run(text: str) -> str:
+    def _phone_agent_run(text: str, *, channel_id: str | None = None) -> str:
         try:
-            return agent.run(text, include_screenshot=False, use_thinking=False)
+            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
         except Exception as e:
             return f"Agent error: {e}"
     _phone.set_agent_run_fn(_phone_agent_run)

@@ -15,10 +15,10 @@ from typing import Callable, Optional
 
 import config
 
-_agent_run_fn: Optional[Callable[[str], str]] = None
+_agent_run_fn: Optional[Callable] = None
 
 
-def set_agent_run_fn(fn: Callable[[str], str]) -> None:
+def set_agent_run_fn(fn: Callable) -> None:
     """Wire main.py's agent.run so inbound SMS/calls have somewhere to go."""
     global _agent_run_fn
     _agent_run_fn = fn
@@ -91,7 +91,7 @@ def dispatch_inbound_sms(from_number: str, body: str) -> str:
     if _agent_run_fn is None:
         return _twiml_say("Agent is not ready yet.")
     try:
-        reply = _agent_run_fn(f"[Inbound SMS from {from_number}] {body}")
+        reply = _agent_run_fn(f"[Inbound SMS from {from_number}] {body}", channel_id=f"sms:{from_number}")
     except Exception as e:
         reply = f"Agent error: {e}"
     return f'<Response><Message>{_escape_xml(reply[:1500])}</Message></Response>'
@@ -119,7 +119,7 @@ def dispatch_inbound_voice(from_number: str, speech_result: Optional[str] = None
         return _twiml_say("Agent is not ready. Try again later.", hangup=True)
 
     try:
-        reply = _agent_run_fn(f"[Inbound voice call from {from_number}] {speech_result}")
+        reply = _agent_run_fn(f"[Inbound voice call from {from_number}] {speech_result}", channel_id=f"voice:{from_number}")
     except Exception as e:
         reply = f"Agent error: {e}"
     return (

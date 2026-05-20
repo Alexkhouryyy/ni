@@ -376,7 +376,7 @@ async def chat_endpoint(request: Request):
         try:
             response = await loop.run_in_executor(
                 None,
-                lambda: _agent_ref.run(user_text, include_screenshot=False, streamer=streamer),
+                lambda: _agent_ref.run(user_text, include_screenshot=False, streamer=streamer, channel_id=f"dashboard:{chat_id}"),
             )
         except Exception as e:
             ws_manager.broadcast_threadsafe({"type": "chat_error", "error": str(e), "chat_id": chat_id})

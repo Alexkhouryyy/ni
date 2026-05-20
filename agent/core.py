@@ -1086,10 +1086,13 @@ class AgentCore:
             api_key=config.ANTHROPIC_API_KEY,
             max_retries=config.API_MAX_RETRIES,
         )
-        self.memory = Memory()
+        self.memory = Memory()               # main loop / voice channel
         self._mcp_tools: list[dict] = []
         self._mcp_loaded = False
-        self._run_lock = threading.Lock()
+        self._run_lock = threading.Lock()    # lock for the main (None) channel
+        self._channel_memories: dict[str, Memory] = {}
+        self._channel_locks: dict[str, threading.Lock] = {}
+        self._channels_mutex = threading.Lock()
 
     def load_mcp_tools(self) -> int:
         """Discover MCP servers and register their tools. Returns count added."""
@@ -1118,24 +1121,41 @@ class AgentCore:
             blocks.append({"type": "text", "text": "## USER-SET BEHAVIORAL RULES (must follow):\n" + overlay})
         return blocks
 
-    def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None) -> str:
+    def _get_channel(self, channel_id: str | None) -> tuple[Memory, threading.Lock]:
+        """Return the (Memory, Lock) pair for the given channel.
+
+        channel_id=None → the main loop's memory (voice/text, backward-compatible).
+        Any other string → a per-channel memory created on first use, so dashboard
+        chats, SMS threads, and scheduler tasks never share conversation history.
+        """
+        if channel_id is None:
+            return self.memory, self._run_lock
+        with self._channels_mutex:
+            if channel_id not in self._channel_memories:
+                self._channel_memories[channel_id] = Memory()
+                self._channel_locks[channel_id] = threading.Lock()
+            return self._channel_memories[channel_id], self._channel_locks[channel_id]
+
+    def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None, *, channel_id: str | None = None) -> str:
         """Run a full agent turn. Returns the final text response.
 
         If `streamer` is provided (a StreamingSpeaker), text deltas are fed to it
         as they arrive so the user hears the first sentence before generation finishes.
 
-        Serialized by `self._run_lock`: a turn mutates `self.memory` across many
-        steps, and multiple threads (main loop, scheduler, dashboard chat, phone
-        webhooks) share one AgentCore instance. The lock makes turns sequential.
+        Each channel (voice/text, dashboard chat_id, SMS number, scheduler task)
+        gets its own Memory instance so their histories never interleave. Turns
+        on the same channel are serialized by a per-channel threading.Lock.
+        Pass channel_id=None (default) for the main voice/text conversation.
         """
-        with self._run_lock:
-            self.memory.maybe_summarize(self.client)
+        memory, lock = self._get_channel(channel_id)
+        with lock:
+            memory.maybe_summarize(self.client)
 
             # Build user message content
             user_content: list = []
 
-            if self.memory.context_prefix():
-                user_content.append({"type": "text", "text": self.memory.context_prefix()})
+            if memory.context_prefix():
+                user_content.append({"type": "text", "text": memory.context_prefix()})
 
             if include_screenshot:
                 try:
@@ -1149,7 +1169,7 @@ class AgentCore:
                     user_content.append({"type": "text", "text": f"[Screenshot unavailable: {e}]"})
 
             user_content.append({"type": "text", "text": user_text})
-            self.memory.add_user(user_content)
+            memory.add_user(user_content)
 
             # Telemetry: new turn
             telemetry.bump_turn()
@@ -1171,7 +1191,7 @@ class AgentCore:
                     max_tokens=16000,
                     system=self._effective_system_prompt(),
                     tools=self._all_tools(),
-                    messages=self.memory.get_messages(),
+                    messages=memory.get_messages(),
                 )
 
                 if use_thinking:
@@ -1199,7 +1219,7 @@ class AgentCore:
                         pass
                     return resilience.friendly_message(e)
 
-                self.memory.add_assistant(response_content)
+                memory.add_assistant(response_content)
                 final_text = this_text
 
                 # Per-turn log for replay
@@ -1231,7 +1251,7 @@ class AgentCore:
                     except Exception:
                         pass
 
-                self.memory.add_user(tool_results)
+                memory.add_user(tool_results)
 
             return final_text or "I hit my iteration limit. Something may have gone wrong — let me know how to proceed."
 
