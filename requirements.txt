@@ -8,7 +8,8 @@ watchdog
 pypdf
 pyperclip
 fastapi
-uvicorn
+uvicorn[standard]
+websockets
 pytesseract
 opencv-python-headless
 faster-whisper

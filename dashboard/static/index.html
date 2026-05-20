@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/static/styles.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="https://unpkg.com/globe.gl"></script>
 </head>
 <body>
 <aside id="sidebar">
@@ -20,7 +21,7 @@
 
   <nav class="sidenav">
     <div class="nav-group-label">Agent</div>
-    <button data-tab="overview" class="nav-btn active"><span class="icon">◆</span>Overview</button>
+    <button data-tab="overview" class="nav-btn active"><span class="icon">⊕</span>Command</button>
     <button data-tab="live" class="nav-btn"><span class="icon">▣</span>Live feed</button>
 
     <div class="nav-group-label">Intelligence</div>
@@ -52,64 +53,60 @@
 
 <main id="main-content">
 
-  <!-- OVERVIEW -->
-  <section id="tab-overview" class="tab active">
-    <header class="page-head">
-      <h1>Overview</h1>
-      <div class="page-sub">Snapshot of your agent's brain, body, and bills</div>
-    </header>
+  <!-- COMMAND CENTER -->
+  <section id="tab-overview" class="tab active command-center">
+    <canvas id="cmd-starfield" class="cmd-starfield"></canvas>
 
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-label">Cost · last 7d</div>
-        <div class="stat-value" id="ov-cost">—</div>
-        <div class="stat-meta" id="ov-cost-meta">—</div>
+    <div class="cmd-topbar">
+      <div class="cmd-title">
+        <span class="cmd-title-main">APEX&nbsp;COMMAND</span>
+        <span class="cmd-title-sub">Global Agent Operations</span>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Cache hit rate</div>
-        <div class="stat-value" id="ov-cache">—</div>
-        <div class="stat-bar"><div class="stat-bar-fill" id="ov-cache-bar"></div></div>
+      <div class="cmd-clock" id="cmd-clock">--:--:--</div>
+    </div>
+
+    <div class="hud hud-tl">
+      <div class="hud-frame">
+        <div class="hud-label">Spend · 7d</div>
+        <div class="hud-value" id="hud-cost">—</div>
+        <div class="hud-meta" id="hud-cost-meta">—</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">API calls · 7d</div>
-        <div class="stat-value" id="ov-calls">—</div>
-        <div class="stat-meta" id="ov-calls-meta">across all models</div>
+    </div>
+    <div class="hud hud-tr">
+      <div class="hud-frame">
+        <div class="hud-label">Cache Efficiency</div>
+        <div class="hud-value" id="hud-cache">—</div>
+        <div class="hud-bar"><div class="hud-bar-fill" id="hud-cache-bar"></div></div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Active goals</div>
-        <div class="stat-value" id="ov-goals">—</div>
-        <div class="stat-meta" id="ov-goals-meta">tracked</div>
+    </div>
+    <div class="hud hud-bl">
+      <div class="hud-frame">
+        <div class="hud-label">API Calls · 7d</div>
+        <div class="hud-value" id="hud-calls">—</div>
+        <div class="hud-meta" id="hud-calls-meta">all models</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Memories</div>
-        <div class="stat-value" id="ov-mems">—</div>
-        <div class="stat-meta" id="ov-mems-meta">long-term</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Entities</div>
-        <div class="stat-value" id="ov-ents">—</div>
-        <div class="stat-meta" id="ov-ents-meta">in graph</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Pending reflections</div>
-        <div class="stat-value" id="ov-refl">—</div>
-        <div class="stat-meta">awaiting your review</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Scheduled tasks</div>
-        <div class="stat-value" id="ov-tasks">—</div>
-        <div class="stat-meta" id="ov-tasks-meta">autonomous</div>
+    </div>
+    <div class="hud hud-br">
+      <div class="hud-frame">
+        <div class="hud-label">Core Systems</div>
+        <div class="hud-value hud-value-sm" id="hud-model">—</div>
+        <div class="hud-meta" id="hud-systems">—</div>
       </div>
     </div>
 
-    <div class="two-col">
-      <div class="panel">
-        <div class="panel-head"><h3>Cost / day</h3><span class="panel-sub" id="ov-cost-window">last 7d</span></div>
-        <canvas id="overview-cost-chart" height="120"></canvas>
-      </div>
-      <div class="panel">
-        <div class="panel-head"><h3>Recent activity</h3></div>
-        <div id="overview-feed" class="feed compact"></div>
+    <div class="command-stage" id="command-stage">
+      <div class="orbit-ring orbit-ring-outer"></div>
+      <div class="orbit-ring orbit-ring-mid"></div>
+      <div class="orbit-ring orbit-ring-inner"></div>
+      <div class="globe-glow"></div>
+      <div id="globe" class="globe-mount"></div>
+      <div id="feature-orbit" class="feature-orbit"></div>
+    </div>
+
+    <div class="cmd-ticker">
+      <span class="cmd-ticker-label">LIVE&nbsp;OPS</span>
+      <div class="cmd-ticker-track" id="cmd-ticker">
+        <div class="cmd-ticker-item cmd-ticker-idle">Awaiting agent activity…</div>
       </div>
     </div>
   </section>

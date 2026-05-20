@@ -55,7 +55,6 @@ refreshStatus();
 // === WebSocket live feed ===
 const wsIndicator = document.getElementById('ws-indicator');
 const feed = document.getElementById('event-feed');
-const overviewFeed = document.getElementById('overview-feed');
 let ws;
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -75,26 +74,24 @@ function connectWS() {
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 25000);
 }
 function addFeedItem(msg) {
-  const row = (() => {
-    const div = document.createElement('div');
-    div.className = 'feed-item';
-    div.innerHTML = `
-      <span class="ts">${fmtTs(msg.ts)}</span>
-      <span class="source">${escapeHTML(msg.source || 'event')}</span>
-      <span class="content">${escapeHTML(msg.content || '')}</span>`;
-    return div;
-  });
-  feed.prepend(row());
+  const div = document.createElement('div');
+  div.className = 'feed-item';
+  div.innerHTML = `
+    <span class="ts">${fmtTs(msg.ts)}</span>
+    <span class="source">${escapeHTML(msg.source || 'event')}</span>
+    <span class="content">${escapeHTML(msg.content || '')}</span>`;
+  feed.prepend(div);
   while (feed.children.length > 250) feed.removeChild(feed.lastChild);
-  overviewFeed.prepend(row());
-  while (overviewFeed.children.length > 8) overviewFeed.removeChild(overviewFeed.lastChild);
+  pushTicker(msg);
+  spawnArc(msg.source);
+  registerLiveEvent();
 }
 connectWS();
 
 // === Tab loaders ===
 async function loadTab(tab) {
   const fns = {
-    overview: loadOverview,
+    overview: loadCommand,
     goals: loadGoals,
     memory: loadMemory,
     graph: loadGraph,
@@ -109,49 +106,233 @@ async function loadTab(tab) {
   };
   if (fns[tab]) try { await fns[tab](); } catch (e) { console.error('loadTab', tab, e); }
 }
-loadTab('overview');
 
-// ============== OVERVIEW ==============
-let overviewCostChart = null;
-async function loadOverview() {
+// ============== COMMAND CENTER ==============
+const FEATURES = [
+  { tab: 'live',        icon: '▣', label: 'Live Feed',  badge: 'events' },
+  { tab: 'goals',       icon: '◇', label: 'Goals',      badge: 'goals' },
+  { tab: 'memory',      icon: '◎', label: 'Memory',     badge: 'memories' },
+  { tab: 'graph',       icon: '◈', label: 'Knowledge',  badge: 'entities' },
+  { tab: 'reflections', icon: '⌘', label: 'Reflect',    badge: 'reflections' },
+  { tab: 'telemetry',   icon: '▤', label: 'Telemetry' },
+  { tab: 'replay',      icon: '▷', label: 'Replay' },
+  { tab: 'schedule',    icon: '◷', label: 'Schedule',   badge: 'tasks' },
+  { tab: 'subagents',   icon: '⌥', label: 'Sub-agents', badge: 'subagents' },
+  { tab: 'knowledge',   icon: '≡', label: 'Knwl Base' },
+  { tab: 'selfmod',     icon: '✎', label: 'Self-Mod' },
+  { tab: 'phone',       icon: '☎', label: 'Phone' },
+];
+
+// World hub coordinates [lat, lng] — agent activity lights these up
+const HUBS = [
+  [37.77, -122.42], [40.71, -74.0], [51.50, -0.12], [35.68, 139.69],
+  [1.35, 103.82], [-33.87, 151.21], [52.52, 13.40], [19.08, 72.88],
+  [-23.55, -46.63], [55.75, 37.62], [48.85, 2.35], [25.20, 55.27],
+];
+const SRC_COLOR = {
+  stt: '#5fd8ff', tool: '#8a7cff', awareness: '#3ddc97', error: '#ff6a6a',
+  proactive: '#ffb547', event: '#5fd8ff', agent: '#8a7cff',
+};
+
+let globeInstance = null;
+let globeArcs = [];
+let commandInited = false;
+let liveEventTimes = [];
+
+function registerLiveEvent() { liveEventTimes.push(Date.now()); }
+function refreshEventBadge() {
+  const cutoff = Date.now() - 300000;
+  liveEventTimes = liveEventTimes.filter(t => t > cutoff);
+  setBadge('events', liveEventTimes.length);
+}
+setInterval(refreshEventBadge, 15000);
+
+function setBadge(key, val) {
+  const el = document.getElementById('badge-' + key);
+  if (!el) return;
+  if (val && val > 0) { el.textContent = val > 99 ? '99+' : val; el.style.display = 'flex'; }
+  else el.style.display = 'none';
+}
+
+function buildFeatureOrbit() {
+  const orbit = document.getElementById('feature-orbit');
+  if (!orbit || orbit.childElementCount) return;
+  const R = 318;
+  FEATURES.forEach((f, i) => {
+    const ang = (-90 + i * (360 / FEATURES.length)) * Math.PI / 180;
+    const node = document.createElement('div');
+    node.className = 'feat-node';
+    node.style.left = (R * Math.cos(ang)) + 'px';
+    node.style.top = (R * Math.sin(ang)) + 'px';
+    node.style.animationDelay = (i * 0.35) + 's';
+    node.title = f.label;
+    node.innerHTML = `
+      <span class="feat-node-icon">${f.icon}</span>
+      <span class="feat-node-label">${f.label}</span>
+      ${f.badge ? `<span class="feat-node-badge" id="badge-${f.badge}" style="display:none">0</span>` : ''}`;
+    node.addEventListener('click', () => {
+      document.querySelector(`.nav-btn[data-tab="${f.tab}"]`)?.click();
+    });
+    orbit.appendChild(node);
+  });
+}
+
+function initStarfield() {
+  const cv = document.getElementById('cmd-starfield');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  let stars = [];
+  function resize() {
+    cv.width = cv.offsetWidth; cv.height = cv.offsetHeight;
+    const n = Math.floor(cv.width * cv.height / 7000);
+    stars = Array.from({ length: n }, () => ({
+      x: Math.random() * cv.width, y: Math.random() * cv.height,
+      r: Math.random() * 1.4 + 0.2,
+      tw: Math.random() * Math.PI * 2,
+      sp: Math.random() * 0.018 + 0.003,
+    }));
+  }
+  resize();
+  window.addEventListener('resize', resize);
+  (function draw() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    for (const s of stars) {
+      s.tw += s.sp;
+      const a = 0.3 + Math.sin(s.tw) * 0.35;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(170,210,255,${Math.max(0, a)})`;
+      ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  })();
+}
+
+function initGlobe() {
+  const mount = document.getElementById('globe');
+  if (!mount || globeInstance) return;
+  if (typeof Globe === 'undefined') {
+    mount.innerHTML = '<div class="globe-fallback"></div>';
+    return;
+  }
   try {
-    const [tel, goals, mems, tasks, refl, ents] = await Promise.all([
+    globeInstance = Globe()(mount)
+      .width(460).height(460)
+      .backgroundColor('rgba(0,0,0,0)')
+      .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+      .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+      .showAtmosphere(true)
+      .atmosphereColor('#5fd8ff')
+      .atmosphereAltitude(0.21)
+      .arcsData(globeArcs)
+      .arcColor('color')
+      .arcAltitude('alt')
+      .arcStroke(0.55)
+      .arcDashLength(0.45)
+      .arcDashGap(0.25)
+      .arcDashAnimateTime(1600)
+      .ringsData(HUBS.slice(0, 4).map(([lat, lng]) => ({ lat, lng })))
+      .ringColor(() => (t => `rgba(95,216,255,${1 - t})`))
+      .ringMaxRadius(4)
+      .ringPropagationSpeed(1.6)
+      .ringRepeatPeriod(1400);
+    const ctrl = globeInstance.controls();
+    ctrl.autoRotate = true;
+    ctrl.autoRotateSpeed = 0.7;
+    ctrl.enableZoom = false;
+  } catch (e) {
+    console.error('globe init failed', e);
+    mount.innerHTML = '<div class="globe-fallback"></div>';
+  }
+}
+
+function spawnArc(source) {
+  if (!globeInstance) return;
+  const a = HUBS[Math.floor(Math.random() * HUBS.length)];
+  let b = HUBS[Math.floor(Math.random() * HUBS.length)];
+  if (a === b) b = HUBS[(HUBS.indexOf(b) + 1) % HUBS.length];
+  const color = SRC_COLOR[source] || '#5fd8ff';
+  const arc = {
+    startLat: a[0], startLng: a[1], endLat: b[0], endLng: b[1],
+    color: [color, color], alt: 0.18 + Math.random() * 0.22,
+  };
+  globeArcs = [...globeArcs, arc].slice(-14);
+  globeInstance.arcsData(globeArcs);
+  setTimeout(() => {
+    globeArcs = globeArcs.filter(x => x !== arc);
+    if (globeInstance) globeInstance.arcsData(globeArcs);
+  }, 4200);
+}
+
+// Ambient arcs keep the globe alive even when the agent is idle
+setInterval(() => {
+  if (globeInstance && document.getElementById('tab-overview')?.classList.contains('active')) {
+    spawnArc('event');
+  }
+}, 3600);
+
+function pushTicker(msg) {
+  const track = document.getElementById('cmd-ticker');
+  if (!track) return;
+  track.querySelector('.cmd-ticker-idle')?.remove();
+  const item = document.createElement('div');
+  item.className = 'cmd-ticker-item';
+  const txt = (msg.content || '').slice(0, 70);
+  item.innerHTML = `<span class="tk-src">${escapeHTML(msg.source || 'event')}</span>${escapeHTML(txt)}`;
+  track.prepend(item);
+  while (track.children.length > 7) track.removeChild(track.lastChild);
+}
+
+function startCmdClock() {
+  const el = document.getElementById('cmd-clock');
+  if (!el) return;
+  const tick = () => { el.textContent = new Date().toLocaleTimeString([], { hour12: false }); };
+  tick();
+  setInterval(tick, 1000);
+}
+
+async function loadCommand() {
+  if (!commandInited) {
+    commandInited = true;
+    buildFeatureOrbit();
+    initStarfield();
+    initGlobe();
+    startCmdClock();
+  }
+  try {
+    const [tel, goals, mems, tasks, refl, ents, subs, status] = await Promise.all([
       api('/api/telemetry?days=7'),
       api('/api/goals?active_only=true'),
       api('/api/memories?limit=500'),
       api('/api/tasks'),
       api('/api/reflections?status=pending'),
       api('/api/entities?limit=500'),
+      api('/api/subagents'),
+      api('/api/status').catch(() => ({})),
     ]);
-    document.getElementById('ov-cost').textContent = fmtCost(tel.total_cost_usd);
-    document.getElementById('ov-cost-meta').textContent = `${fmtNum(tel.total_input_tokens + tel.total_output_tokens)} tokens`;
-    document.getElementById('ov-cache').textContent = (tel.cache_hit_rate * 100).toFixed(1) + '%';
-    document.getElementById('ov-cache-bar').style.width = (tel.cache_hit_rate * 100) + '%';
-    document.getElementById('ov-calls').textContent = fmtNum(tel.total_calls);
-    document.getElementById('ov-goals').textContent = goals.length;
-    document.getElementById('ov-mems').textContent = mems.length;
-    document.getElementById('ov-ents').textContent = (ents.nodes || ents).length || 0;
-    document.getElementById('ov-refl').textContent = refl.length;
-    document.getElementById('ov-tasks').textContent = tasks.length;
+    document.getElementById('hud-cost').textContent = fmtCost(tel.total_cost_usd);
+    document.getElementById('hud-cost-meta').textContent =
+      fmtNum((tel.total_input_tokens || 0) + (tel.total_output_tokens || 0)) + ' tokens';
+    const cache = (tel.cache_hit_rate || 0) * 100;
+    document.getElementById('hud-cache').textContent = cache.toFixed(1) + '%';
+    document.getElementById('hud-cache-bar').style.width = cache + '%';
+    document.getElementById('hud-calls').textContent = fmtNum(tel.total_calls);
+    document.getElementById('hud-calls-meta').textContent =
+      (tel.by_model || []).length + ' models active';
+    document.getElementById('hud-model').textContent =
+      (status.model || '—').replace('claude-', '');
+    document.getElementById('hud-systems').textContent =
+      `${status.tools_count || 0} tools · ${status.awareness_enabled ? 'aware' : 'idle'}`;
 
-    // Cost / day chart
-    const ctx = document.getElementById('overview-cost-chart').getContext('2d');
-    if (overviewCostChart) overviewCostChart.destroy();
-    const labels = tel.by_day.map(d => new Date(d.day * 1000).toLocaleDateString([], {month:'short', day:'numeric'}));
-    const data = tel.by_day.map(d => d.cost_usd);
-    overviewCostChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Cost (USD)',
-          data,
-          backgroundColor: '#6cf', borderRadius: 4, maxBarThickness: 36,
-        }]
-      },
-      options: chartOpts({ y: { ticks: { callback: v => '$' + v } } })
-    });
-  } catch (e) { console.error('overview', e); }
+    const entCount = (ents.nodes || ents || []).length || 0;
+    const runningSubs = Object.values(subs || {}).filter(s => s.status === 'running').length;
+    setBadge('goals', goals.length);
+    setBadge('memories', mems.length);
+    setBadge('entities', entCount);
+    setBadge('reflections', refl.length);
+    setBadge('tasks', tasks.length);
+    setBadge('subagents', runningSubs);
+  } catch (e) { console.error('command', e); }
 }
 
 function chartOpts(scaleOverrides = {}) {
@@ -559,7 +740,10 @@ setInterval(() => {
   if (document.querySelector('.nav-btn.active')?.dataset.tab === 'subagents') loadSubagents();
 }, 3000);
 
-// Refresh overview every 30s
+// Refresh command center every 20s
 setInterval(() => {
-  if (document.querySelector('.nav-btn.active')?.dataset.tab === 'overview') loadOverview();
-}, 30000);
+  if (document.querySelector('.nav-btn.active')?.dataset.tab === 'overview') loadCommand();
+}, 20000);
+
+// Boot the default view
+loadTab('overview');
