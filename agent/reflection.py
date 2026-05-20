@@ -184,7 +184,7 @@ def consolidate(client, hours: int = 24, autosave: bool = True) -> dict:
             content = (item.get("content") or "").strip()
             confidence = float(item.get("confidence") or 0.5)
             action = item.get("action") or {}
-            should_apply = autosave and confidence >= 0.85
+            should_apply = autosave and confidence >= config.REFLECTION_AUTO_APPLY_THRESHOLD
             status = "applied" if should_apply else "pending"
             c.execute(
                 """INSERT INTO reflections (ts, kind, content, source_session_ids, confidence, status, action_json)

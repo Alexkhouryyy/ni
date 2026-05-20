@@ -27,3 +27,4 @@ playwright
 twilio
 replicate
 python-multipart
+pytest>=8.0
