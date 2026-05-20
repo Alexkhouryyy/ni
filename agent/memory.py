@@ -36,19 +36,23 @@ class Memory:
             for m in self.messages
         )
 
-        resp = telemetry.create(
-            client,
-            call_site="agent.memory/maybe_summarize",
-            model=config.PROACTIVE_MODEL,
-            max_tokens=512,
-            messages=[{
-                "role": "user",
-                "content": (
-                    "Summarize this conversation in 3-5 sentences, preserving key decisions, "
-                    f"context, and facts:\n\n{conversation_text}"
-                ),
-            }],
-        )
+        try:
+            resp = telemetry.create(
+                client,
+                call_site="agent.memory/maybe_summarize",
+                model=config.PROACTIVE_MODEL,
+                max_tokens=512,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "Summarize this conversation in 3-5 sentences, preserving key decisions, "
+                        f"context, and facts:\n\n{conversation_text}"
+                    ),
+                }],
+            )
+        except anthropic.APIError as e:
+            print(f"[Resilience] conversation summarization skipped ({type(e).__name__}); keeping full history")
+            return
         self.summary = resp.content[0].text
         # Keep only the last 4 messages for continuity
         self.messages = self.messages[-4:]

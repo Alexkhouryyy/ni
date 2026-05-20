@@ -14,6 +14,7 @@ from agent import goals
 from agent import entities
 from agent import reflection
 from agent import telemetry
+from agent import resilience
 from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
@@ -1081,7 +1082,10 @@ def _make_tool_result_content(name: str, tool_use_id: str, result_str: str) -> d
 
 class AgentCore:
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        self.client = anthropic.Anthropic(
+            api_key=config.ANTHROPIC_API_KEY,
+            max_retries=config.API_MAX_RETRIES,
+        )
         self.memory = Memory()
         self._mcp_tools: list[dict] = []
         self._mcp_loaded = False
@@ -1173,16 +1177,27 @@ class AgentCore:
                 if use_thinking:
                     kwargs["thinking"] = {"type": "enabled", "budget_tokens": config.THINKING_BUDGET}
 
-                # Stream if we have a speaker, otherwise non-stream
-                if streamer is not None:
-                    response_content, stop_reason, this_text = self._stream_turn(kwargs, streamer)
-                else:
-                    resp = telemetry.create(self.client, call_site="agent.core/main", **kwargs)
-                    response_content = resp.content
-                    stop_reason = resp.stop_reason
-                    this_text = " ".join(
-                        getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
-                    ).strip()
+                # Stream if we have a speaker, otherwise non-stream. The SDK
+                # retries transient API errors; if one outlasts every retry,
+                # end the turn gracefully instead of crashing the caller.
+                try:
+                    if streamer is not None:
+                        response_content, stop_reason, this_text = self._stream_turn(kwargs, streamer)
+                    else:
+                        resp = telemetry.create(self.client, call_site="agent.core/main", **kwargs)
+                        response_content = resp.content
+                        stop_reason = resp.stop_reason
+                        this_text = " ".join(
+                            getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
+                        ).strip()
+                except anthropic.APIError as e:
+                    category = resilience.classify(e)
+                    print(f"[Resilience] agent.core/main failed ({category}) after retries: {e}")
+                    try:
+                        telemetry.log_turn("error", {"category": category, "detail": str(e)[:400]})
+                    except Exception:
+                        pass
+                    return resilience.friendly_message(e)
 
                 self.memory.add_assistant(response_content)
                 final_text = this_text
@@ -1255,25 +1270,29 @@ class AgentCore:
 
     def proactive_check(self, screenshot_b64: str) -> str | None:
         """Quick check: is there anything on screen worth proactively flagging?"""
-        resp = telemetry.create(
-            self.client,
-            call_site="agent.core/proactive_check",
-            model=config.PROACTIVE_MODEL,
-            max_tokens=256,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": screenshot_b64}},
-                    {"type": "text", "text": (
-                        "You are a proactive AI assistant watching the user's screen. "
-                        "Is there anything URGENT or notably interesting here that the user would want to know about right now? "
-                        "Examples: an error message, a long-running process that finished, an important notification, "
-                        "something the user is visibly struggling with, a security warning. "
-                        "If YES, respond with a short 1-2 sentence observation. "
-                        "If NO, respond with exactly: NO"
-                    )},
-                ],
-            }],
-        )
+        try:
+            resp = telemetry.create(
+                self.client,
+                call_site="agent.core/proactive_check",
+                model=config.PROACTIVE_MODEL,
+                max_tokens=256,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": screenshot_b64}},
+                        {"type": "text", "text": (
+                            "You are a proactive AI assistant watching the user's screen. "
+                            "Is there anything URGENT or notably interesting here that the user would want to know about right now? "
+                            "Examples: an error message, a long-running process that finished, an important notification, "
+                            "something the user is visibly struggling with, a security warning. "
+                            "If YES, respond with a short 1-2 sentence observation. "
+                            "If NO, respond with exactly: NO"
+                        )},
+                    ],
+                }],
+            )
+        except anthropic.APIError as e:
+            print(f"[Resilience] proactive_check skipped ({resilience.classify(e)}): {e}")
+            return None
         text = resp.content[0].text.strip()
         return None if text.upper().startswith("NO") else text

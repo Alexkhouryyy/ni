@@ -8,6 +8,9 @@ AGENT_MODEL = "claude-opus-4-7"
 PROACTIVE_MODEL = "claude-haiku-4-5-20251001"
 THINKING_BUDGET = 8000  # tokens for extended thinking
 
+# API resilience
+API_MAX_RETRIES = 4  # transient errors (429/500/529/network) retried by the SDK with exponential backoff
+
 # Voice
 WHISPER_MODEL = "base"          # tiny/base/small/medium/large
 WHISPER_DEVICE = "cpu"          # cpu or cuda
