@@ -51,9 +51,10 @@ def main():
 
     # Initialize agent + long-term memory
     from agent.core import AgentCore
-    from agent import longterm
+    from agent import longterm, telemetry
     longterm.init_db()
     session_id = longterm.start_session()
+    telemetry.set_session(session_id)
     print(f"[Memory] Session #{session_id} started. DB: {longterm.DB_PATH}")
 
     # Load top memories into the agent's working context as a system reminder
@@ -84,7 +85,10 @@ def main():
                 return ""
     else:
         from voice.tts import speak
-        from voice.stt import listen
+        from voice.stt import listen, listen_streaming, warm_up as _stt_warm
+
+        # Pre-warm Whisper kernel so the first real turn is fast
+        threading.Thread(target=_stt_warm, daemon=True, name="STTWarmup").start()
 
         # Warm up TTS
         speak("Agent online. Ready.")
@@ -134,6 +138,30 @@ def main():
             trigger_params={"day_of_week": "mon", "hour": 8, "minute": 0},
         )
 
+    # Nightly reflection — once per fresh DB
+    from agent import reflection
+    nightly_refl_exists = any(
+        "Nightly reflection" in t.get("description", "") for t in sched.list_tasks()
+    )
+    if not nightly_refl_exists:
+        sched.schedule(
+            description=(
+                "Nightly reflection. Call reflect_now(hours=24). Then call list_reflections(status='pending') "
+                "and briefly mention how many insights are awaiting review on the dashboard."
+            ),
+            trigger_type="cron",
+            trigger_params={"hour": 3, "minute": 0},
+        )
+
+    # Twilio inbound dispatch — wire agent.run so SMS/voice webhooks have a brain
+    from tools import phone as _phone
+    def _phone_agent_run(text: str) -> str:
+        try:
+            return agent.run(text, include_screenshot=False, use_thinking=False)
+        except Exception as e:
+            return f"Agent error: {e}"
+    _phone.set_agent_run_fn(_phone_agent_run)
+
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:
         from agent.awareness import AwarenessMonitor
@@ -141,7 +169,9 @@ def main():
         def _awareness_proactive_check(events_summary: str):
             """Lightweight Haiku call: decide if events warrant interrupting."""
             try:
-                resp = agent.client.messages.create(
+                resp = telemetry.create(
+                    agent.client,
+                    call_site="agent.awareness/review",
                     model=config.PROACTIVE_MODEL,
                     max_tokens=200,
                     messages=[{"role": "user", "content": (
@@ -171,6 +201,10 @@ def main():
         # Fall back to original screenshot-only proactive
         from agent.proactive import ProactiveMonitor
         monitor = ProactiveMonitor(agent, speak)
+
+    # Let reflection pull awareness events at consolidation time
+    if hasattr(monitor, "log"):
+        reflection.set_awareness_drain(lambda: monitor.log.recent(since_seconds=86400))
 
     # Start the web dashboard
     if getattr(config, "DASHBOARD_ENABLED", True):
@@ -238,6 +272,27 @@ def main():
         wake_listener.start(on_wake=wake_event.set)
         speak("Wake mode on. Say 'hey agent' to wake me.")
 
+    # Stream STT partials to the dashboard if it's running
+    def _on_partial(text: str):
+        try:
+            if config.DASHBOARD_ENABLED:
+                from dashboard import server as _dash
+                _dash.ws_manager.broadcast_threadsafe({
+                    "type": "event", "ts": __import__("time").time(),
+                    "source": "stt", "content": f"… {text}",
+                })
+        except Exception:
+            pass
+
+    def _voice_listen():
+        if args.text:
+            return listen()
+        try:
+            return listen_streaming(on_partial=_on_partial)
+        except Exception as e:
+            print(f"[STT] Streaming failed ({e}), falling back to listen().")
+            return listen()
+
     # Main loop
     print("Press Ctrl+C to quit.\n")
     while not shutdown_event.is_set():
@@ -248,10 +303,10 @@ def main():
             # Wait for wake trigger, then do full listen
             wake_event.wait()
             wake_event.clear()
-            user_input = listen()
+            user_input = _voice_listen()
         else:
             print("[Listening...]")
-            user_input = listen()
+            user_input = _voice_listen()
 
         if not user_input:
             continue

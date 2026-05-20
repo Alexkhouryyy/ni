@@ -3,38 +3,129 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Voice Agent — Dashboard</title>
+<title>Apex Agent · Dashboard</title>
 <link rel="stylesheet" href="/static/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 </head>
 <body>
-<header>
-  <h1>Voice Agent</h1>
-  <div id="status-bar">
-    <span id="status-model">—</span>
-    <span id="status-tools">— tools</span>
-    <span id="status-uptime">—</span>
-    <span id="ws-indicator" class="ws-off">offline</span>
+<aside id="sidebar">
+  <div class="brand">
+    <div class="logo-dot"></div>
+    <div class="brand-text">
+      <div class="brand-title">Apex Agent</div>
+      <div class="brand-sub" id="ws-indicator">offline</div>
+    </div>
   </div>
-</header>
 
-<nav class="tabs">
-  <button data-tab="live" class="active">Live</button>
-  <button data-tab="goals">Goals</button>
-  <button data-tab="memory">Memory</button>
-  <button data-tab="schedule">Schedule</button>
-  <button data-tab="knowledge">Knowledge</button>
-  <button data-tab="subagents">Sub-agents</button>
-  <button data-tab="selfmod">Self-mod</button>
-</nav>
+  <nav class="sidenav">
+    <div class="nav-group-label">Agent</div>
+    <button data-tab="overview" class="nav-btn active"><span class="icon">◆</span>Overview</button>
+    <button data-tab="live" class="nav-btn"><span class="icon">▣</span>Live feed</button>
 
-<main>
-  <section id="tab-live" class="tab active">
-    <h2>Live activity</h2>
+    <div class="nav-group-label">Intelligence</div>
+    <button data-tab="goals" class="nav-btn"><span class="icon">◇</span>Goals</button>
+    <button data-tab="memory" class="nav-btn"><span class="icon">◎</span>Memory</button>
+    <button data-tab="graph" class="nav-btn"><span class="icon">◈</span>Knowledge graph</button>
+    <button data-tab="reflections" class="nav-btn"><span class="icon">⌘</span>Reflections</button>
+
+    <div class="nav-group-label">Observability</div>
+    <button data-tab="telemetry" class="nav-btn"><span class="icon">▤</span>Telemetry</button>
+    <button data-tab="replay" class="nav-btn"><span class="icon">▷</span>Replay</button>
+
+    <div class="nav-group-label">Automation</div>
+    <button data-tab="schedule" class="nav-btn"><span class="icon">◷</span>Schedule</button>
+    <button data-tab="subagents" class="nav-btn"><span class="icon">⌥</span>Sub-agents</button>
+
+    <div class="nav-group-label">Extensions</div>
+    <button data-tab="knowledge" class="nav-btn"><span class="icon">≡</span>Knowledge base</button>
+    <button data-tab="selfmod" class="nav-btn"><span class="icon">✎</span>Self-mod</button>
+    <button data-tab="phone" class="nav-btn"><span class="icon">☎</span>Phone</button>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="footer-row"><span>Model</span><span id="status-model">—</span></div>
+    <div class="footer-row"><span>Tools</span><span id="status-tools">—</span></div>
+    <div class="footer-row"><span>Uptime</span><span id="status-uptime">—</span></div>
+  </div>
+</aside>
+
+<main id="main-content">
+
+  <!-- OVERVIEW -->
+  <section id="tab-overview" class="tab active">
+    <header class="page-head">
+      <h1>Overview</h1>
+      <div class="page-sub">Snapshot of your agent's brain, body, and bills</div>
+    </header>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Cost · last 7d</div>
+        <div class="stat-value" id="ov-cost">—</div>
+        <div class="stat-meta" id="ov-cost-meta">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Cache hit rate</div>
+        <div class="stat-value" id="ov-cache">—</div>
+        <div class="stat-bar"><div class="stat-bar-fill" id="ov-cache-bar"></div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">API calls · 7d</div>
+        <div class="stat-value" id="ov-calls">—</div>
+        <div class="stat-meta" id="ov-calls-meta">across all models</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active goals</div>
+        <div class="stat-value" id="ov-goals">—</div>
+        <div class="stat-meta" id="ov-goals-meta">tracked</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Memories</div>
+        <div class="stat-value" id="ov-mems">—</div>
+        <div class="stat-meta" id="ov-mems-meta">long-term</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Entities</div>
+        <div class="stat-value" id="ov-ents">—</div>
+        <div class="stat-meta" id="ov-ents-meta">in graph</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending reflections</div>
+        <div class="stat-value" id="ov-refl">—</div>
+        <div class="stat-meta">awaiting your review</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Scheduled tasks</div>
+        <div class="stat-value" id="ov-tasks">—</div>
+        <div class="stat-meta" id="ov-tasks-meta">autonomous</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-head"><h3>Cost / day</h3><span class="panel-sub" id="ov-cost-window">last 7d</span></div>
+        <canvas id="overview-cost-chart" height="120"></canvas>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Recent activity</h3></div>
+        <div id="overview-feed" class="feed compact"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIVE -->
+  <section id="tab-live" class="tab">
+    <header class="page-head">
+      <h1>Live feed</h1>
+      <div class="page-sub">Awareness events, tool calls, sub-agent status — pushed in real time</div>
+    </header>
     <div id="event-feed" class="feed"></div>
   </section>
 
+  <!-- GOALS -->
   <section id="tab-goals" class="tab">
-    <h2>Goals</h2>
+    <header class="page-head"><h1>Goals</h1></header>
     <form id="goal-form" class="add-form">
       <input name="title" placeholder="Goal title" required>
       <input name="description" placeholder="Description (optional)">
@@ -45,25 +136,120 @@
         <option value="quarter">quarter</option>
       </select>
       <input name="deadline_iso" placeholder="YYYY-MM-DD (optional)">
-      <button type="submit">Add</button>
+      <button type="submit">Add goal</button>
     </form>
-    <div id="goals-list"></div>
+    <div id="goals-list" class="cards"></div>
   </section>
 
+  <!-- MEMORY -->
   <section id="tab-memory" class="tab">
-    <h2>Long-term memory</h2>
+    <header class="page-head"><h1>Long-term memory</h1></header>
     <div class="controls">
-      <input id="memory-search" placeholder="Search memories...">
+      <input id="memory-search" placeholder="Semantic search across memories...">
       <button id="memory-refresh">Refresh</button>
     </div>
-    <table id="memory-table">
-      <thead><tr><th>ID</th><th>Kind</th><th>Importance</th><th>Content</th><th>Actions</th></tr></thead>
+    <table id="memory-table" class="data-table">
+      <thead><tr><th>ID</th><th>Kind</th><th>Importance</th><th>Content</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
   </section>
 
+  <!-- KNOWLEDGE GRAPH -->
+  <section id="tab-graph" class="tab">
+    <header class="page-head">
+      <h1>Knowledge graph</h1>
+      <div class="page-sub">Entities (people, projects, places, concepts) and the relations between them</div>
+    </header>
+    <div class="controls">
+      <input id="graph-search" placeholder="Search entity by name...">
+      <button id="graph-search-btn">Find</button>
+      <select id="graph-kind-filter">
+        <option value="">All kinds</option>
+        <option>person</option><option>project</option><option>place</option>
+        <option>concept</option><option>tool</option><option>file</option>
+        <option>event</option><option>org</option>
+      </select>
+      <button id="graph-refresh">Reload</button>
+    </div>
+    <div class="graph-layout">
+      <div id="graph-canvas" class="graph-canvas"></div>
+      <div id="graph-side" class="graph-side">
+        <div class="graph-side-empty">Click a node to inspect.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REFLECTIONS -->
+  <section id="tab-reflections" class="tab">
+    <header class="page-head">
+      <h1>Reflections</h1>
+      <div class="page-sub">Auto-extracted insights from your day. Accept to commit; reject to discard.</div>
+    </header>
+    <div class="controls">
+      <button id="refl-tab-pending" class="filter-btn active">Pending</button>
+      <button id="refl-tab-applied" class="filter-btn">Applied</button>
+      <button id="refl-tab-rejected" class="filter-btn">Rejected</button>
+      <button id="refl-run" class="primary-btn" style="margin-left:auto">Run consolidation now</button>
+    </div>
+    <div id="reflections-list" class="cards"></div>
+  </section>
+
+  <!-- TELEMETRY -->
+  <section id="tab-telemetry" class="tab">
+    <header class="page-head">
+      <h1>Telemetry</h1>
+      <div class="page-sub">Tokens, cost, cache, latency — for every Claude call</div>
+    </header>
+    <div class="controls">
+      <label>Window:</label>
+      <select id="tel-window">
+        <option value="1">1 day</option>
+        <option value="7" selected>7 days</option>
+        <option value="30">30 days</option>
+      </select>
+      <button id="tel-refresh">Refresh</button>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Total cost</div><div class="stat-value" id="tel-cost">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total calls</div><div class="stat-value" id="tel-calls">—</div></div>
+      <div class="stat-card"><div class="stat-label">Cache hit rate</div><div class="stat-value" id="tel-cache">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total output tokens</div><div class="stat-value" id="tel-out">—</div></div>
+    </div>
+    <div class="two-col">
+      <div class="panel"><div class="panel-head"><h3>Cost / day</h3></div><canvas id="tel-cost-chart" height="160"></canvas></div>
+      <div class="panel"><div class="panel-head"><h3>Tokens by model</h3></div><canvas id="tel-model-chart" height="160"></canvas></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head"><h3>By model</h3></div>
+      <table class="data-table" id="tel-model-table">
+        <thead><tr><th>Model</th><th>Calls</th><th>Input</th><th>Cache read</th><th>Output</th><th>Avg latency</th><th>Cost</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- REPLAY -->
+  <section id="tab-replay" class="tab">
+    <header class="page-head">
+      <h1>Episode replay</h1>
+      <div class="page-sub">Step through any past session — every user turn, every tool call, every assistant reply</div>
+    </header>
+    <div class="replay-layout">
+      <div class="replay-side">
+        <div class="panel-head"><h3>Sessions</h3></div>
+        <div id="replay-sessions" class="replay-sessions"></div>
+      </div>
+      <div class="replay-main">
+        <div id="replay-detail" class="replay-detail">
+          <div class="empty-state">Pick a session on the left.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCHEDULE -->
   <section id="tab-schedule" class="tab">
-    <h2>Scheduled tasks</h2>
+    <header class="page-head"><h1>Scheduled tasks</h1></header>
     <form id="task-form" class="add-form">
       <input name="description" placeholder="Task description" required>
       <select name="trigger_type">
@@ -72,17 +258,24 @@
         <option value="date">date</option>
       </select>
       <input name="trigger_params" placeholder='{"hour":8,"minute":0}' required>
-      <button type="submit">Add</button>
+      <button type="submit">Schedule</button>
     </form>
-    <div id="tasks-list"></div>
+    <div id="tasks-list" class="cards"></div>
   </section>
 
+  <!-- SUB-AGENTS -->
+  <section id="tab-subagents" class="tab">
+    <header class="page-head"><h1>Sub-agents</h1></header>
+    <div id="subagents-list" class="cards"></div>
+  </section>
+
+  <!-- KNOWLEDGE BASE -->
   <section id="tab-knowledge" class="tab">
-    <h2>Knowledge base</h2>
-    <div id="kb-stats"></div>
+    <header class="page-head"><h1>Knowledge base</h1></header>
+    <div id="kb-stats" class="panel kb-stats">—</div>
     <form id="kb-reindex-form" class="add-form">
       <input name="paths" placeholder="~/Documents/notes, ~/code" required>
-      <label><input type="checkbox" name="force"> Force</label>
+      <label class="checkbox"><input type="checkbox" name="force"> Force</label>
       <button type="submit">Reindex</button>
     </form>
     <div class="controls">
@@ -92,21 +285,33 @@
     <div id="kb-results"></div>
   </section>
 
-  <section id="tab-subagents" class="tab">
-    <h2>Sub-agents</h2>
-    <div id="subagents-list"></div>
-  </section>
-
+  <!-- SELF-MOD -->
   <section id="tab-selfmod" class="tab">
-    <h2>Self-modification</h2>
+    <header class="page-head"><h1>Self-modification</h1></header>
     <div id="selfmod-state"></div>
     <form id="prompt-form" class="add-form vertical">
       <textarea name="addition" placeholder="Add a durable behavioral rule..." rows="4" required></textarea>
-      <label><input type="checkbox" name="replace"> Replace (instead of append)</label>
+      <label class="checkbox"><input type="checkbox" name="replace"> Replace (instead of append)</label>
       <button type="submit">Update prompt</button>
     </form>
     <button id="revert-btn" class="danger">Revert all self-mods</button>
   </section>
+
+  <!-- PHONE -->
+  <section id="tab-phone" class="tab">
+    <header class="page-head">
+      <h1>Phone</h1>
+      <div class="page-sub">Twilio SMS + voice — agent is reachable anywhere</div>
+    </header>
+    <div id="phone-state" class="panel">—</div>
+    <form id="sms-form" class="add-form">
+      <input name="to" placeholder="+14155551234" required>
+      <input name="body" placeholder="Message body" required>
+      <button type="submit">Send SMS</button>
+    </form>
+    <div id="sms-result" class="panel-result"></div>
+  </section>
+
 </main>
 
 <script src="/static/app.js"></script>

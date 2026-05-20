@@ -64,3 +64,31 @@ BASH_TIMEOUT = 30               # seconds
 
 # Screen
 SCREENSHOT_QUALITY = 85         # JPEG quality for screenshots sent to Claude
+
+# === Tier-4 ===
+
+# Voice (streaming)
+PARTIAL_INTERVAL_MS = 500       # how often to re-transcribe the rolling buffer
+
+# Phone (Twilio)
+TWILIO_SID = os.getenv("TWILIO_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
+PHONE_ALLOWED_NUMBERS = [n.strip() for n in os.getenv("PHONE_ALLOWED_NUMBERS", "").split(",") if n.strip()]
+
+# Image generation (Replicate)
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
+IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL", "black-forest-labs/flux-schnell")
+IMAGE_GEN_OUTPUT_DIR = os.getenv("IMAGE_GEN_OUTPUT_DIR", "~/.voice_agent_images")
+
+# Telemetry — Anthropic per-million-token pricing (USD)
+# Update when models / prices change.
+MODEL_PRICING = {
+    "claude-opus-4-7":           {"input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_create": 18.75},
+    "claude-opus-4-6":           {"input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_create": 18.75},
+    "claude-sonnet-4-6":         {"input": 3.0,  "output": 15.0, "cache_read": 0.30, "cache_create": 3.75},
+    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0,  "cache_read": 0.08, "cache_create": 1.0},
+}
+
+# Reflection
+REFLECTION_AUTO_APPLY_THRESHOLD = 0.85

@@ -7,6 +7,7 @@ import json
 import requests
 from bs4 import BeautifulSoup
 import config
+from agent import telemetry
 
 _search_client = None
 
@@ -44,7 +45,9 @@ def search(query: str, num_results: int = None) -> list[dict]:
 def _search_via_anthropic(query: str, num_results: int) -> list[dict]:
     """Use Anthropic's web_search built-in tool to run a search."""
     client = _get_client()
-    resp = client.messages.create(
+    resp = telemetry.create(
+        client,
+        call_site="tools.research/web_search",
         model=config.PROACTIVE_MODEL,
         max_tokens=2048,
         tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}],

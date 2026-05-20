@@ -15,6 +15,10 @@ _RULES: list[tuple[str, str, re.Pattern, str]] = [
     ("update_system_prompt", "addition", re.compile(r".+"), "modifying the agent's own system prompt"),
     ("register_new_tool", "name", re.compile(r".+"), "registering a new self-defined tool"),
     ("revert_self_mod", "restore_backup", re.compile(r".*"), "reverting self-modifications"),
+    # Tier-4: outbound communications need explicit confirmation
+    ("sms_send", "to", re.compile(r".+"), "sending an SMS to a real phone number"),
+    ("call_user", "to", re.compile(r".+"), "placing an outbound voice call"),
+    ("generate_image", "prompt", re.compile(r".+"), "generating an image (uses Replicate credits)"),
 ]
 
 _confirm_fn = None  # injected at startup: a callable(prompt: str) -> bool

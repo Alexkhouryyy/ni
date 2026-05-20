@@ -1,6 +1,7 @@
 """Conversation memory with automatic summarization."""
 import anthropic
 import config
+from agent import telemetry
 
 _SUMMARY_THRESHOLD = 20  # messages before summarizing
 
@@ -35,7 +36,9 @@ class Memory:
             for m in self.messages
         )
 
-        resp = client.messages.create(
+        resp = telemetry.create(
+            client,
+            call_site="agent.memory/maybe_summarize",
             model=config.PROACTIVE_MODEL,
             max_tokens=512,
             messages=[{

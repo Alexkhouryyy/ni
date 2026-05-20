@@ -9,6 +9,7 @@ import time
 from typing import Optional
 
 from agent import longterm
+from agent import telemetry
 
 VALID_HORIZONS = {"day", "week", "month", "quarter"}
 VALID_STATUSES = {"active", "paused", "done", "abandoned"}
@@ -170,7 +171,9 @@ def evaluate_recent_work(client, days: int = 7) -> str:
     digest = "\n".join(digest_parts)
 
     import config
-    resp = client.messages.create(
+    resp = telemetry.create(
+        client,
+        call_site="agent.goals/evaluate_recent_work",
         model=config.AGENT_MODEL,
         max_tokens=1500,
         messages=[{"role": "user", "content": (

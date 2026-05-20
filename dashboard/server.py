@@ -14,13 +14,17 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 import config
 from agent import longterm, knowledge, self_mod, goals, orchestrator
 from agent import scheduler as sched
+from agent import entities as ent_mod
+from agent import reflection as refl_mod
+from agent import telemetry as tel_mod
+from tools import phone as phone_mod
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -221,6 +225,114 @@ def recent_events(seconds: float = 300.0):
     if _awareness_log is None:
         return []
     return _awareness_log.recent(since_seconds=seconds)
+
+
+# --- Tier-4: Reflections ---
+@app.get("/api/reflections")
+def list_reflections_endpoint(status: str = "pending", limit: int = 100):
+    return refl_mod.list_reflections(status=status, limit=limit)
+
+
+@app.post("/api/reflections/{reflection_id}/apply")
+def apply_reflection_endpoint(reflection_id: int, payload: dict = None):
+    accept = (payload or {}).get("accept", True)
+    return {"result": refl_mod.apply_reflection(reflection_id, accept=accept)}
+
+
+@app.post("/api/reflections/run")
+def run_reflection_endpoint(payload: dict = None):
+    import anthropic
+    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    hours = (payload or {}).get("hours", 24)
+    return refl_mod.consolidate(client, hours=int(hours))
+
+
+# --- Tier-4: Knowledge Graph ---
+@app.get("/api/entities")
+def list_entities(kind: str = "", limit: int = 100):
+    if kind:
+        return ent_mod.query_by_kind(kind, limit=limit)
+    return ent_mod.subgraph(limit_nodes=limit)
+
+
+@app.get("/api/entities/query")
+def query_entity_endpoint(name: str, hops: int = 1):
+    return ent_mod.query_entity(name, hops=hops)
+
+
+@app.post("/api/entities")
+def upsert_entity_endpoint(payload: dict):
+    return ent_mod.upsert_entity(
+        payload["name"],
+        kind=payload.get("kind", "concept"),
+        properties=payload.get("properties") or {},
+        importance=int(payload.get("importance", 5)),
+    )
+
+
+@app.post("/api/entities/relate")
+def relate_endpoint(payload: dict):
+    return ent_mod.relate(
+        payload["from_name"], payload["to_name"], payload["kind"],
+        from_kind=payload.get("from_kind", "concept"),
+        to_kind=payload.get("to_kind", "concept"),
+        properties=payload.get("properties") or {},
+        confidence=float(payload.get("confidence", 1.0)),
+    )
+
+
+@app.delete("/api/entities/{entity_id}")
+def delete_entity_endpoint(entity_id: int):
+    return {"result": ent_mod.delete_entity(entity_id)}
+
+
+# --- Tier-4: Telemetry & Replay ---
+@app.get("/api/telemetry")
+def telemetry_summary(days: int = 7):
+    return tel_mod.summary(days=days)
+
+
+@app.get("/api/telemetry/sessions")
+def telemetry_sessions(limit: int = 30):
+    return tel_mod.list_recent_sessions(limit=limit)
+
+
+@app.get("/api/replay/{session_id}")
+def replay_session_endpoint(session_id: int):
+    return tel_mod.replay_session(session_id)
+
+
+# --- Tier-4: Phone (Twilio webhooks + status) ---
+@app.get("/api/phone/status")
+def phone_status():
+    return {
+        "configured": bool(getattr(config, "TWILIO_SID", "")) and bool(getattr(config, "TWILIO_AUTH_TOKEN", "")),
+        "from_number": getattr(config, "TWILIO_FROM_NUMBER", ""),
+        "allowed_numbers": getattr(config, "PHONE_ALLOWED_NUMBERS", []),
+    }
+
+
+@app.post("/api/phone/sms")
+def phone_sms_endpoint(payload: dict):
+    return {"result": phone_mod.sms_send(payload["to"], payload["body"])}
+
+
+@app.post("/twilio/sms")
+async def twilio_inbound_sms(request: Request):
+    form = await request.form()
+    from_number = form.get("From", "")
+    body = form.get("Body", "")
+    twiml = phone_mod.dispatch_inbound_sms(from_number, body)
+    return Response(content=twiml, media_type="application/xml")
+
+
+@app.post("/twilio/voice")
+async def twilio_inbound_voice(request: Request):
+    form = await request.form()
+    from_number = form.get("From", "")
+    speech_result = form.get("SpeechResult", "")
+    twiml = phone_mod.dispatch_inbound_voice(from_number, speech_result or None)
+    return Response(content=twiml, media_type="application/xml")
 
 
 # --- WebSocket live stream ---
