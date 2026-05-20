@@ -48,6 +48,7 @@ KB_INDEX_PATHS = [                    # paths to index for RAG
 
 # Multi-agent
 MAX_SUBAGENTS = 5                     # max concurrent sub-agents
+MAX_ITERATIONS = 30                   # max tool-use iterations per agent turn
 
 # Dashboard
 DASHBOARD_ENABLED = True

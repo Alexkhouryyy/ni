@@ -1229,7 +1229,7 @@ class AgentCore:
                 self._channel_locks[channel_id] = threading.Lock()
             return self._channel_memories[channel_id], self._channel_locks[channel_id]
 
-    def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None, *, channel_id: str | None = None) -> str:
+    def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None, *, channel_id: str | None = None, max_iterations: int | None = None) -> str:
         """Run a full agent turn. Returns the final text response.
 
         If `streamer` is provided (a StreamingSpeaker), text deltas are fed to it
@@ -1272,7 +1272,7 @@ class AgentCore:
                 pass
 
             # Agentic tool-use loop
-            max_iterations = 30
+            max_iterations = max_iterations if max_iterations is not None else config.MAX_ITERATIONS
             iteration = 0
             final_text = ""
 
