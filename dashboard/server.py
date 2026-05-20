@@ -321,6 +321,11 @@ def replay_session_endpoint(session_id: int):
     return tel_mod.replay_session(session_id)
 
 
+@app.get("/api/turns/search")
+def search_turns_endpoint(q: str, limit: int = 20, session_id: int = None):
+    return longterm.search_turns(q, limit=limit, session_id=session_id)
+
+
 # --- Tier-4: Phone (Twilio webhooks + status) ---
 @app.get("/api/phone/status")
 def phone_status():

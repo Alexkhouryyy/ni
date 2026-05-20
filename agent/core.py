@@ -775,6 +775,24 @@ TOOLS = [
             "required": ["session_id"],
         },
     },
+    {
+        "name": "search_turns",
+        "description": (
+            "Full-text search over conversation history. Use when the user asks "
+            "'what did we say about X', 'find where I mentioned Y', or wants to "
+            "locate a specific past exchange by keyword. Supports FTS5 operators: "
+            "quoted phrases, OR, AND, NOT."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "FTS5 query — keywords, \"exact phrase\", OR, AND, NOT"},
+                "limit": {"type": "integer", "default": 20},
+                "session_id": {"type": "integer", "description": "Restrict search to one session (optional)"},
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
@@ -1023,6 +1041,13 @@ def _execute_tool(name: str, inputs: dict) -> str:
             return json.dumps(telemetry.summary(days=int(inputs.get("days", 7))), indent=2)
         elif name == "replay_session":
             return json.dumps(telemetry.replay_session(int(inputs["session_id"])), indent=2, default=str)
+        elif name == "search_turns":
+            results = longterm.search_turns(
+                inputs["query"],
+                limit=int(inputs.get("limit", 20)),
+                session_id=inputs.get("session_id"),
+            )
+            return json.dumps(results, indent=2, default=str)
 
         else:
             # Try dynamic tools registered via self_mod

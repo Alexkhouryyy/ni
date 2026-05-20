@@ -199,6 +199,22 @@ def init_db():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_turn_session ON turn_log(session_id, turn_index)")
 
+        # --- FTS5 index over turn_log for keyword search ---
+        had_trigger = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='turn_log_ai'"
+        ).fetchone()
+        c.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS turn_log_fts "
+            "USING fts5(content_json, content='turn_log', content_rowid='id')"
+        )
+        c.execute("""
+            CREATE TRIGGER IF NOT EXISTS turn_log_ai AFTER INSERT ON turn_log BEGIN
+              INSERT INTO turn_log_fts(rowid, content_json) VALUES (new.id, new.content_json);
+            END
+        """)
+        if not had_trigger:
+            c.execute("INSERT INTO turn_log_fts(turn_log_fts) VALUES('rebuild')")
+
 
 @contextmanager
 def _conn():
@@ -301,3 +317,44 @@ def end_session(session_id: int, summary: str = "") -> None:
             "UPDATE sessions SET ended_at = ?, summary = ? WHERE id = ?",
             (time.time(), summary, session_id),
         )
+
+
+def search_turns(query: str, limit: int = 20, session_id: int | None = None) -> list[dict]:
+    """Full-text search over turn_log using FTS5. Returns ranked matching turns."""
+    import json as _json
+    try:
+        with _conn() as c:
+            if session_id is not None:
+                rows = c.execute(
+                    """SELECT t.id, t.ts, t.session_id, t.turn_index, t.role, t.content_json
+                       FROM turn_log_fts f
+                       JOIN turn_log t ON t.id = f.rowid
+                       WHERE f.content_json MATCH ? AND t.session_id = ?
+                       ORDER BY rank
+                       LIMIT ?""",
+                    (query, session_id, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    """SELECT t.id, t.ts, t.session_id, t.turn_index, t.role, t.content_json
+                       FROM turn_log_fts f
+                       JOIN turn_log t ON t.id = f.rowid
+                       WHERE f.content_json MATCH ?
+                       ORDER BY rank
+                       LIMIT ?""",
+                    (query, limit),
+                ).fetchall()
+    except Exception as e:
+        return [{"error": str(e)}]
+
+    results = []
+    for r in rows:
+        try:
+            content = _json.loads(r[5])
+        except Exception:
+            content = r[5]
+        results.append({
+            "id": r[0], "ts": r[1], "session_id": r[2],
+            "turn_index": r[3], "role": r[4], "content": content,
+        })
+    return results
