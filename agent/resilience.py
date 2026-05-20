@@ -1,14 +1,18 @@
-"""Classification and graceful handling of Anthropic API failures.
+"""Classification, graceful handling, and fallback for Anthropic API failures.
 
 The Anthropic SDK already retries transient errors (429, 500-range, 529, and
 network failures) with exponential backoff and honors `retry-after`;
 `config.API_MAX_RETRIES` tunes how many attempts it makes. This module covers
-what the SDK does not: turning an error that outlasted every retry into a clear
-category and a graceful, user-facing sentence — so a failed turn ends with a
-reply instead of an unhandled exception that crashes the caller (an SMS webhook,
-a scheduled job, or a dashboard request).
+what the SDK does not:
+  1. Turning an exhausted-retry error into a clear category + user-facing message.
+  2. Optionally routing the request to a fallback provider (OpenRouter) when the
+     primary provider is rate-limited or overloaded. Set OPENROUTER_API_KEY in
+     .env to enable; set FALLBACK_MODEL to choose the model (default:
+     anthropic/claude-3-5-sonnet). The fallback omits tools and thinking — it
+     returns a plain text completion as a best-effort degraded response.
 """
 import anthropic
+import config
 
 
 def classify(exc: Exception) -> str:
@@ -29,6 +33,56 @@ def classify(exc: Exception) -> str:
     if isinstance(exc, anthropic.APIError):
         return "api_error"
     return "unexpected"
+
+
+def should_fallback(category: str) -> bool:
+    """True for transient/capacity errors where a different provider might succeed."""
+    return category in {"rate_limit", "overloaded", "server_error", "network", "api_error"}
+
+
+def fallback_create(messages: list[dict], system: str = "", max_tokens: int = 4000) -> str:
+    """Try OpenRouter as a fallback provider.
+
+    Converts Anthropic-format messages to OpenAI-format (strips images and
+    tool blocks, keeps text). Returns the completion text or raises RuntimeError.
+    """
+    key = getattr(config, "OPENROUTER_API_KEY", "") or ""
+    if not key:
+        raise RuntimeError("OPENROUTER_API_KEY not configured.")
+    model = getattr(config, "FALLBACK_MODEL", "") or "anthropic/claude-3-5-sonnet"
+
+    try:
+        from openai import OpenAI  # optional dependency
+    except ImportError:
+        raise RuntimeError("openai package not installed — run: pip install openai")
+
+    oai_messages: list[dict] = []
+    if system:
+        oai_messages.append({"role": "system", "content": system})
+
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        if isinstance(content, list):
+            parts = [
+                b.get("text", "")
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
+            content = " ".join(parts).strip() or "[non-text content]"
+        if isinstance(content, str) and content:
+            oai_messages.append({"role": role, "content": content})
+
+    try:
+        client = OpenAI(api_key=key, base_url="https://openrouter.ai/api/v1")
+        resp = client.chat.completions.create(
+            model=model,
+            messages=oai_messages,
+            max_tokens=max_tokens,
+        )
+        return resp.choices[0].message.content or ""
+    except Exception as e:
+        raise RuntimeError(f"Fallback provider also failed: {e}") from e
 
 
 _MESSAGES = {

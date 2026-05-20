@@ -1310,6 +1310,22 @@ class AgentCore:
                         telemetry.log_turn("error", {"category": category, "detail": str(e)[:400]})
                     except Exception:
                         pass
+                    if resilience.should_fallback(category):
+                        try:
+                            print(f"[Resilience] Attempting fallback provider ({config.FALLBACK_MODEL})...")
+                            system_text = "\n\n".join(
+                                b.get("text", "") for b in self._effective_system_prompt()
+                                if isinstance(b, dict) and b.get("type") == "text"
+                            )
+                            fallback_text = resilience.fallback_create(
+                                memory.get_messages(), system=system_text, max_tokens=4000,
+                            )
+                            if fallback_text:
+                                memory.add_assistant([{"type": "text", "text": fallback_text}])
+                                print("[Resilience] Fallback succeeded.")
+                                return fallback_text
+                        except RuntimeError as fe:
+                            print(f"[Resilience] Fallback failed: {fe}")
                     return resilience.friendly_message(e)
 
                 memory.add_assistant(response_content)

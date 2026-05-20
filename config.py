@@ -10,6 +10,8 @@ THINKING_BUDGET = 8000  # tokens for extended thinking
 
 # API resilience
 API_MAX_RETRIES = 4  # transient errors (429/500/529/network) retried by the SDK with exponential backoff
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "anthropic/claude-3-5-sonnet")
 
 # Voice
 WHISPER_MODEL = "base"          # tiny/base/small/medium/large

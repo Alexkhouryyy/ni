@@ -81,3 +81,78 @@ class TestFriendlyMessage:
     def test_unknown_exception_returns_fallback(self):
         msg = resilience.friendly_message(KeyboardInterrupt())
         assert isinstance(msg, str) and msg.strip()
+
+
+class TestShouldFallback:
+    def test_rate_limit_triggers_fallback(self):
+        assert resilience.should_fallback("rate_limit")
+
+    def test_overloaded_triggers_fallback(self):
+        assert resilience.should_fallback("overloaded")
+
+    def test_server_error_triggers_fallback(self):
+        assert resilience.should_fallback("server_error")
+
+    def test_network_triggers_fallback(self):
+        assert resilience.should_fallback("network")
+
+    def test_auth_does_not_trigger_fallback(self):
+        assert not resilience.should_fallback("auth")
+
+    def test_client_error_does_not_trigger_fallback(self):
+        assert not resilience.should_fallback("client_error")
+
+
+class TestFallbackCreate:
+    def test_raises_when_no_key_configured(self, monkeypatch):
+        import config
+        monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
+        with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
+            resilience.fallback_create([{"role": "user", "content": "hi"}])
+
+    def test_converts_list_content_to_text(self, monkeypatch):
+        """Verifies message conversion and call path without a real API call or real openai package."""
+        import sys
+        import config
+        monkeypatch.setattr(config, "OPENROUTER_API_KEY", "fake-key")
+        monkeypatch.setattr(config, "FALLBACK_MODEL", "test/model")
+
+        captured = {}
+
+        class FakeMessage:
+            content = "hello back"
+
+        class FakeChoice:
+            message = FakeMessage()
+
+        class FakeResp:
+            choices = [FakeChoice()]
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured["messages"] = kwargs["messages"]
+                return FakeResp()
+
+        class FakeChat:
+            completions = FakeCompletions()
+
+        class FakeOpenAI:
+            def __init__(self, **_):
+                self.chat = FakeChat()
+
+        # Inject a fake openai module so resilience.py's `from openai import OpenAI` succeeds
+        fake_openai = type(sys)("openai")
+        fake_openai.OpenAI = FakeOpenAI
+        monkeypatch.setitem(sys.modules, "openai", fake_openai)
+
+        messages = [
+            {"role": "user", "content": [
+                {"type": "text", "text": "hello"},
+                {"type": "image", "source": {}},
+            ]}
+        ]
+        result = resilience.fallback_create(messages, system="Be brief.")
+        assert result == "hello back"
+        user_msg = next(m for m in captured["messages"] if m["role"] == "user")
+        assert "hello" in user_msg["content"]
+        assert "image" not in user_msg["content"].lower()

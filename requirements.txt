@@ -27,4 +27,5 @@ playwright
 twilio
 replicate
 python-multipart
+openai          # optional: needed for multi-provider fallback (OpenRouter)
 pytest>=8.0
