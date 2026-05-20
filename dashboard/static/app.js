@@ -70,6 +70,9 @@ function connectWS() {
     if (msg.type === 'snapshot' && msg.data?.events_recent) {
       msg.data.events_recent.forEach(e => addFeedItem(e));
     }
+    if (msg.type === 'chat_token') _chatAppendToken(msg.delta, msg.chat_id);
+    if (msg.type === 'chat_done')  _chatFinalize(msg.chat_id);
+    if (msg.type === 'chat_error') _chatError(msg.error, msg.chat_id);
   };
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 25000);
 }
@@ -103,6 +106,7 @@ async function loadTab(tab) {
     knowledge: loadKB,
     selfmod: loadSelfMod,
     phone: loadPhone,
+    chat: loadChat,
   };
   if (fns[tab]) try { await fns[tab](); } catch (e) { console.error('loadTab', tab, e); }
 }
@@ -744,6 +748,98 @@ setInterval(() => {
 setInterval(() => {
   if (document.querySelector('.nav-btn.active')?.dataset.tab === 'overview') loadCommand();
 }, 20000);
+
+// ============== CHAT ==============
+let activeChatId = null;
+let currentAgentBubble = null;
+let currentAgentText = '';
+
+function loadChat() {
+  const input = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send');
+  if (input._chatWired) return;
+  input._chatWired = true;
+  sendBtn.addEventListener('click', sendChat);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+  });
+}
+
+function _appendChatMsg(role, text) {
+  const msgs = document.getElementById('chat-messages');
+  if (!msgs) return null;
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  div.innerHTML = `<div class="chat-msg-role">${role === 'user' ? 'You' : 'Agent'}</div>` +
+                  `<div class="chat-msg-content">${escapeHTML(text)}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send');
+  const text = (input?.value || '').trim();
+  if (!text || activeChatId) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  _appendChatMsg('user', text);
+
+  currentAgentText = '';
+  currentAgentBubble = _appendChatMsg('agent', '');
+  currentAgentBubble.classList.add('streaming');
+  sendBtn.disabled = true;
+
+  // Generate chat_id client-side so WS tokens are routed before POST returns
+  const chatId = Math.random().toString(36).slice(2, 10);
+  activeChatId = chatId;
+
+  try {
+    await api('/api/chat', { method: 'POST', body: { message: text, chat_id: chatId } });
+  } catch (e) {
+    if (activeChatId === chatId) _chatError(`HTTP error: ${e.message}`, chatId);
+    return;
+  }
+  // Fallback: finalize if chat_done already arrived via WS and cleared activeChatId
+  if (activeChatId === chatId) _chatFinalize(chatId);
+}
+
+function _chatAppendToken(delta, chatId) {
+  if (activeChatId !== chatId || !currentAgentBubble) return;
+  currentAgentText += delta;
+  const el = currentAgentBubble.querySelector('.chat-msg-content');
+  if (el) el.textContent = currentAgentText;
+  const msgs = document.getElementById('chat-messages');
+  if (msgs) msgs.scrollTop = msgs.scrollHeight;
+}
+
+function _chatFinalize(chatId) {
+  if (activeChatId !== chatId) return;
+  if (currentAgentBubble) currentAgentBubble.classList.remove('streaming');
+  currentAgentBubble = null;
+  activeChatId = null;
+  const sendBtn = document.getElementById('chat-send');
+  if (sendBtn) sendBtn.disabled = false;
+}
+
+function _chatError(error, chatId) {
+  if (activeChatId !== chatId) return;
+  if (currentAgentBubble) {
+    const el = currentAgentBubble.querySelector('.chat-msg-content');
+    if (el) { el.textContent = error; el.classList.add('chat-error-text'); }
+    currentAgentBubble.classList.remove('streaming');
+    currentAgentBubble = null;
+  }
+  activeChatId = null;
+  const sendBtn = document.getElementById('chat-send');
+  if (sendBtn) sendBtn.disabled = false;
+}
 
 // Boot the default view
 loadTab('overview');

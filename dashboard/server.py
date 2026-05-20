@@ -11,6 +11,7 @@ import json
 import os
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -74,6 +75,24 @@ class WSManager:
 
 
 ws_manager = WSManager()
+
+_chat_lock: Optional[asyncio.Lock] = None
+
+
+class ChatStreamer:
+    """Minimal streamer that forwards token deltas to dashboard WebSocket clients."""
+    def __init__(self, chat_id: str):
+        self.chat_id = chat_id
+
+    def feed(self, text: str):
+        ws_manager.broadcast_threadsafe({
+            "type": "chat_token",
+            "delta": text,
+            "chat_id": self.chat_id,
+        })
+
+    def start(self): pass
+    def finish(self): pass
 
 
 # === FastAPI app ===
@@ -333,6 +352,38 @@ async def twilio_inbound_voice(request: Request):
     speech_result = form.get("SpeechResult", "")
     twiml = phone_mod.dispatch_inbound_voice(from_number, speech_result or None)
     return Response(content=twiml, media_type="application/xml")
+
+
+# --- Chat ---
+@app.post("/api/chat")
+async def chat_endpoint(request: Request):
+    global _chat_lock
+    if _chat_lock is None:
+        _chat_lock = asyncio.Lock()
+
+    body = await request.json()
+    user_text = (body.get("message") or "").strip()
+    chat_id = body.get("chat_id") or str(uuid.uuid4())[:8]
+
+    if not user_text:
+        return JSONResponse({"error": "empty message"}, status_code=400)
+    if not _agent_ref:
+        return JSONResponse({"error": "agent not ready"}, status_code=503)
+
+    async with _chat_lock:
+        streamer = ChatStreamer(chat_id)
+        loop = asyncio.get_event_loop()
+        try:
+            response = await loop.run_in_executor(
+                None,
+                lambda: _agent_ref.run(user_text, include_screenshot=False, streamer=streamer),
+            )
+        except Exception as e:
+            ws_manager.broadcast_threadsafe({"type": "chat_error", "error": str(e), "chat_id": chat_id})
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    ws_manager.broadcast_threadsafe({"type": "chat_done", "response": response, "chat_id": chat_id})
+    return {"ok": True, "response": response, "chat_id": chat_id}
 
 
 # --- WebSocket live stream ---
