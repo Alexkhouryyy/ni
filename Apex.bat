@@ -9,18 +9,19 @@ echo     A P E X
 echo   ===========================================
 echo.
 
-REM ---- 1. Locate Python (auto-install if missing) ----
+REM ---- 1. Locate Python, auto-install if missing ----
 set "PYCMD="
-where python >nul 2>&1 && set "PYCMD=python"
-if not defined PYCMD where py >nul 2>&1 && set "PYCMD=py"
+python --version >nul 2>&1 && set "PYCMD=python"
+if not defined PYCMD (
+    py --version >nul 2>&1 && set "PYCMD=py"
+)
 if not defined PYCMD (
     echo   [setup] Python is not installed - setting it up for you...
-    where winget >nul 2>&1
+    winget --version >nul 2>&1
     if errorlevel 1 (
         echo   [X] Automatic install needs 'winget', which this PC lacks.
-        echo       Install Python 3.10+ manually from:
-        echo         https://www.python.org/downloads/
-        echo       TICK "Add python.exe to PATH", then run Apex.bat again.
+        echo       Install Python 3.10+ from https://www.python.org/downloads/
+        echo       Tick "Add python.exe to PATH", then run Apex.bat again.
         echo.
         pause
         exit /b 1
@@ -34,33 +35,34 @@ if not defined PYCMD (
     exit /b 0
 )
 
-REM ---- 2. Create the virtual environment (first run only) ----
+REM ---- 2. Create the virtual environment, first run only ----
 if not exist ".venv\Scripts\python.exe" (
     echo   [setup] Creating virtual environment...
     %PYCMD% -m venv .venv
     if errorlevel 1 (
         echo   [X] Could not create the virtual environment.
+        echo.
         pause
         exit /b 1
     )
 )
 set "VPY=.venv\Scripts\python.exe"
 
-REM ---- 3. Install dependencies (first run only) ----
+REM ---- 3. Install dependencies, first run only ----
 if not exist ".venv\.apex_ready" (
     echo   [setup] Installing dependencies.
-    echo           This is a ONE-TIME step and can take 10-20 minutes
-    echo           and download around 2 GB. Grab a coffee.
+    echo           One-time step - can take 10-20 minutes, ~2 GB download.
     echo.
     "%VPY%" -m pip install --upgrade pip
     "%VPY%" -m pip install -r requirements.txt
     if errorlevel 1 (
         echo.
         echo   [X] Dependency install failed - see the errors above.
+        echo.
         pause
         exit /b 1
     )
-    echo   [setup] Downloading browser engine (optional, for web tools)...
+    echo   [setup] Downloading optional browser engine for web tools...
     "%VPY%" -m playwright install chromium
     echo ready>".venv\.apex_ready"
     echo.
@@ -71,10 +73,12 @@ if not exist ".venv\.apex_ready" (
 REM ---- 4. Make sure an Anthropic API key is configured ----
 set "NEEDKEY="
 if not exist ".env" set "NEEDKEY=1"
-if exist ".env" findstr /c:"your_key_here" ".env" >nul 2>&1 && set "NEEDKEY=1"
+if exist ".env" (
+    findstr /c:"your_key_here" ".env" >nul 2>&1 && set "NEEDKEY=1"
+)
 if defined NEEDKEY (
-    echo   Apex needs your Anthropic API key ^(one-time^).
-    echo   Get one at: https://console.anthropic.com/settings/keys
+    echo   Apex needs your Anthropic API key. This is asked once.
+    echo   Get one at https://console.anthropic.com/settings/keys
     echo.
     set /p "APIKEY=  Paste your key here and press Enter: "
     >".env" echo ANTHROPIC_API_KEY=!APIKEY!
@@ -83,7 +87,7 @@ if defined NEEDKEY (
 )
 
 REM ---- 5. Launch Apex ----
-echo   Starting Apex... (type 'quit' to exit)
+echo   Starting Apex. Type 'quit' to exit.
 echo.
 "%VPY%" main.py --tui
 
