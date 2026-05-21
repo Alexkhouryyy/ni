@@ -71,8 +71,11 @@ function connectWS() {
       msg.data.events_recent.forEach(e => addFeedItem(e));
     }
     if (msg.type === 'chat_token') _chatAppendToken(msg.delta, msg.chat_id);
-    if (msg.type === 'chat_done')  _chatFinalize(msg.chat_id);
+    if (msg.type === 'chat_done')  _chatFinalize(msg.chat_id, msg.response);
     if (msg.type === 'chat_error') _chatError(msg.error, msg.chat_id);
+    if (msg.type === 'council_progress') _councilProgress(msg.message);
+    if (msg.type === 'council_done')     _councilDone(msg);
+    if (msg.type === 'council_error')    _councilError(msg.error);
   };
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 25000);
 }
@@ -107,6 +110,7 @@ async function loadTab(tab) {
     selfmod: loadSelfMod,
     phone: loadPhone,
     chat: loadChat,
+    council: loadCouncil,
   };
   if (fns[tab]) try { await fns[tab](); } catch (e) { console.error('loadTab', tab, e); }
 }
@@ -757,6 +761,7 @@ let currentAgentText = '';
 function loadChat() {
   const input = document.getElementById('chat-input');
   const sendBtn = document.getElementById('chat-send');
+  loadModelPicker();
   if (input._chatWired) return;
   input._chatWired = true;
   sendBtn.addEventListener('click', sendChat);
@@ -767,6 +772,44 @@ function loadChat() {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 200) + 'px';
   });
+  document.getElementById('chat-mic')?.addEventListener('click', toggleMic);
+}
+
+// ============== MODEL PICKER ==============
+async function loadModelPicker() {
+  const sel = document.getElementById('chat-model');
+  if (!sel || sel._wired) {
+    if (sel) refreshModelSelection();
+    return;
+  }
+  sel._wired = true;
+  try {
+    const data = await api('/api/models');
+    sel.innerHTML = '';
+    data.models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.model;
+      opt.textContent = m.available ? m.model : `${m.model} (no API key)`;
+      opt.disabled = !m.available;
+      sel.appendChild(opt);
+    });
+    sel.value = data.current;
+  } catch (e) { console.error('loadModelPicker', e); }
+  sel.addEventListener('change', async () => {
+    const msg = document.getElementById('chat-model-msg');
+    try {
+      const r = await api('/api/model', { method: 'POST', body: { model: sel.value } });
+      if (msg) { msg.textContent = r.message; msg.className = 'chat-model-msg ' + (r.ok ? 'ok' : 'err'); }
+      refreshStatus();
+    } catch (e) {
+      if (msg) { msg.textContent = 'Switch failed: ' + e.message; msg.className = 'chat-model-msg err'; }
+    }
+  });
+}
+async function refreshModelSelection() {
+  const sel = document.getElementById('chat-model');
+  if (!sel) return;
+  try { sel.value = (await api('/api/models')).current; } catch (e) {}
 }
 
 function _appendChatMsg(role, text) {
@@ -819,13 +862,15 @@ function _chatAppendToken(delta, chatId) {
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
 }
 
-function _chatFinalize(chatId) {
+function _chatFinalize(chatId, response) {
   if (activeChatId !== chatId) return;
   if (currentAgentBubble) currentAgentBubble.classList.remove('streaming');
+  const spoken = response || currentAgentText;
   currentAgentBubble = null;
   activeChatId = null;
   const sendBtn = document.getElementById('chat-send');
   if (sendBtn) sendBtn.disabled = false;
+  if (spoken) speakText(spoken);
 }
 
 function _chatError(error, chatId) {
@@ -839,6 +884,175 @@ function _chatError(error, chatId) {
   activeChatId = null;
   const sendBtn = document.getElementById('chat-send');
   if (sendBtn) sendBtn.disabled = false;
+}
+
+// ============== VOICE ==============
+let mediaRecorder = null;
+let audioChunks = [];
+
+async function toggleMic() {
+  const micBtn = document.getElementById('chat-mic');
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    alert('Microphone unavailable or permission denied.');
+    return;
+  }
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size) audioChunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    micBtn?.classList.remove('recording');
+    const type = mediaRecorder.mimeType || 'audio/webm';
+    await transcribeAndSend(new Blob(audioChunks, { type }), type);
+  };
+  mediaRecorder.start();
+  micBtn?.classList.add('recording');
+}
+
+async function transcribeAndSend(blob, type) {
+  const micBtn = document.getElementById('chat-mic');
+  const input = document.getElementById('chat-input');
+  micBtn?.classList.add('transcribing');
+  const ext = (type.includes('mp4') || type.includes('mpeg') || type.includes('m4a')) ? 'mp4' : 'webm';
+  const fd = new FormData();
+  fd.append('file', blob, 'speech.' + ext);
+  try {
+    const r = await fetch('/api/transcribe', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'transcription failed');
+    if (data.text) {
+      input.value = data.text;
+      sendChat();
+    }
+  } catch (e) {
+    alert('Voice input failed: ' + e.message);
+  } finally {
+    micBtn?.classList.remove('transcribing');
+  }
+}
+
+function speakText(text) {
+  if (!document.getElementById('voice-output')?.checked) return;
+  const engine = document.getElementById('voice-engine')?.value || 'browser';
+  if (engine === 'openai') speakOpenAI(text);
+  else speakBrowser(text);
+}
+function speakBrowser(text) {
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05;
+    window.speechSynthesis.speak(u);
+  } catch (e) {}
+}
+async function speakOpenAI(text) {
+  try {
+    const r = await fetch('/api/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) { speakBrowser(text); return; }
+    const audio = new Audio(URL.createObjectURL(await r.blob()));
+    audio.play().catch(() => {});
+  } catch (e) { speakBrowser(text); }
+}
+
+// ============== COUNCIL ==============
+let councilRunning = false;
+
+function loadCouncil() {
+  const form = document.getElementById('council-form');
+  if (!form || form._wired) return;
+  form._wired = true;
+  form.addEventListener('submit', e => { e.preventDefault(); runCouncil(); });
+}
+
+async function runCouncil() {
+  if (councilRunning) return;
+  const q = document.getElementById('council-question').value.trim();
+  if (!q) return;
+  const rounds = parseInt(document.getElementById('council-rounds').value, 10);
+  const btn = document.getElementById('council-convene');
+  const progress = document.getElementById('council-progress');
+  const verdict = document.getElementById('council-verdict');
+  const transcript = document.getElementById('council-transcript');
+
+  councilRunning = true;
+  btn.disabled = true;
+  btn.textContent = 'Council in session…';
+  verdict.innerHTML = '';
+  transcript.innerHTML = '';
+  progress.innerHTML = '<div class="council-step">Convening the council…</div>';
+
+  try {
+    const result = await api('/api/council', { method: 'POST', body: { question: q, rounds } });
+    if (councilRunning) _councilDone(result);  // fallback if the WS event didn't arrive
+  } catch (e) {
+    _councilError('Request failed: ' + e.message);
+  }
+}
+
+function _councilProgress(msg) {
+  const progress = document.getElementById('council-progress');
+  if (progress) {
+    const d = document.createElement('div');
+    d.className = 'council-step';
+    d.textContent = msg;
+    progress.appendChild(d);
+  }
+}
+
+function _councilDone(data) {
+  if (!councilRunning) return;  // already rendered (WS + POST both fired)
+  councilRunning = false;
+  const btn = document.getElementById('council-convene');
+  if (btn) { btn.disabled = false; btn.textContent = 'Convene council'; }
+  const verdict = document.getElementById('council-verdict');
+  const transcript = document.getElementById('council-transcript');
+
+  if (verdict) {
+    verdict.innerHTML =
+      `<div class="council-verdict-head">Verdict <span class="council-members">${(data.members || []).join(' · ')}</span></div>` +
+      `<div class="council-verdict-body">${escapeHTML(data.final_answer || '')}</div>`;
+  }
+  if (transcript) {
+    const rounds = {};
+    (data.transcript || []).forEach(e => {
+      (rounds[e.round] = rounds[e.round] || []).push(e);
+    });
+    let html = '';
+    Object.keys(rounds).sort((a, b) => a - b).forEach(r => {
+      const label = r === '0' ? 'Opening statements' : `Debate round ${r}`;
+      html += `<div class="council-round-label">${label}</div><div class="cards">`;
+      rounds[r].forEach(e => {
+        html += `<div class="council-entry"><div class="council-entry-head">${escapeHTML(e.label)}</div>` +
+                `<div class="council-entry-body">${escapeHTML(e.text)}</div></div>`;
+      });
+      html += '</div>';
+    });
+    transcript.innerHTML = html;
+  }
+}
+
+function _councilError(err) {
+  councilRunning = false;
+  const btn = document.getElementById('council-convene');
+  if (btn) { btn.disabled = false; btn.textContent = 'Convene council'; }
+  const progress = document.getElementById('council-progress');
+  if (progress) {
+    const d = document.createElement('div');
+    d.className = 'council-step council-step-err';
+    d.textContent = 'Council failed: ' + err;
+    progress.appendChild(d);
+  }
 }
 
 // Boot the default view

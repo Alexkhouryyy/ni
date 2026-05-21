@@ -24,6 +24,7 @@
     <button data-tab="overview" class="nav-btn active"><span class="icon">⊕</span>Command</button>
     <button data-tab="live" class="nav-btn"><span class="icon">▣</span>Live feed</button>
     <button data-tab="chat" class="nav-btn"><span class="icon">◌</span>Chat</button>
+    <button data-tab="council" class="nav-btn"><span class="icon">⚖</span>Council</button>
 
     <div class="nav-group-label">Intelligence</div>
     <button data-tab="goals" class="nav-btn"><span class="icon">◇</span>Goals</button>
@@ -315,15 +316,55 @@
   <section id="tab-chat" class="tab">
     <header class="page-head">
       <h1>Chat</h1>
-      <div class="page-sub">Talk to the agent directly — no terminal or microphone needed</div>
+      <div class="page-sub">Talk to the agent directly — type or use the mic</div>
     </header>
+    <div class="chat-toolbar">
+      <label class="chat-tool-field">Model
+        <select id="chat-model"></select>
+      </label>
+      <label class="chat-tool-toggle">
+        <input type="checkbox" id="voice-output"> Speak replies
+      </label>
+      <label class="chat-tool-field">Voice
+        <select id="voice-engine">
+          <option value="browser">Browser</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </label>
+      <span id="chat-model-msg" class="chat-model-msg"></span>
+    </div>
     <div class="chat-wrap">
       <div id="chat-messages" class="chat-messages"></div>
       <form id="chat-form" class="chat-form" onsubmit="return false">
+        <button type="button" id="chat-mic" class="chat-mic-btn" title="Tap to speak">🎙</button>
         <textarea id="chat-input" class="chat-input" placeholder="Type a message… (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
         <button id="chat-send" class="chat-send-btn">Send</button>
       </form>
     </div>
+  </section>
+
+  <!-- COUNCIL -->
+  <section id="tab-council" class="tab">
+    <header class="page-head">
+      <h1>Council</h1>
+      <div class="page-sub">Claude, GPT, and Gemini debate your question — a chair synthesizes the best answer</div>
+    </header>
+    <form id="council-form" class="add-form vertical">
+      <textarea id="council-question" placeholder="Ask the council a hard question…" rows="3" required></textarea>
+      <div class="council-controls">
+        <label class="chat-tool-field">Debate rounds
+          <select id="council-rounds">
+            <option value="0">0 — opening only</option>
+            <option value="1" selected>1 — recommended</option>
+            <option value="2">2 — deeper</option>
+          </select>
+        </label>
+        <button type="submit" id="council-convene" class="primary-btn">Convene council</button>
+      </div>
+    </form>
+    <div id="council-progress" class="council-progress"></div>
+    <div id="council-verdict" class="council-verdict"></div>
+    <div id="council-transcript" class="council-transcript"></div>
   </section>
 
 </main>

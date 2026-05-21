@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -136,12 +136,47 @@ async def index():
 @app.get("/api/status")
 def status():
     return {
-        "model": config.AGENT_MODEL,
+        "model": _agent_ref._model if _agent_ref else config.AGENT_MODEL,
         "proactive_enabled": config.PROACTIVE_ENABLED,
         "awareness_enabled": config.AWARENESS_ENABLED,
         "tools_count": len(_agent_ref._all_tools()) if _agent_ref else 0,
         "uptime_s": int(time.time() - _START_TIME),
     }
+
+
+# --- Models ---
+@app.get("/api/models")
+def list_models():
+    from agent.provider import KNOWN_MODELS, provider_for
+    have_key = {
+        "anthropic": bool(config.ANTHROPIC_API_KEY),
+        "openai": bool(config.OPENAI_API_KEY),
+        "gemini": bool(config.GEMINI_API_KEY),
+    }
+    models = [
+        {"model": m, "provider": provider_for(m), "available": have_key.get(provider_for(m), False)}
+        for m in sorted(KNOWN_MODELS)
+    ]
+    return {
+        "current": _agent_ref._model if _agent_ref else config.AGENT_MODEL,
+        "models": models,
+    }
+
+
+@app.post("/api/model")
+async def set_model_endpoint(request: Request):
+    if not _agent_ref:
+        return JSONResponse({"error": "agent not ready"}, status_code=503)
+    body = await request.json()
+    model = (body.get("model") or "").strip()
+    if not model:
+        return JSONResponse({"error": "no model given"}, status_code=400)
+    message = _agent_ref.set_model(model)
+    ok = message.startswith("Switched")
+    return JSONResponse(
+        {"ok": ok, "message": message, "model": _agent_ref._model},
+        status_code=200 if ok else 400,
+    )
 
 
 # --- Memories ---
@@ -446,6 +481,86 @@ async def chat_endpoint(request: Request):
 
     ws_manager.broadcast_threadsafe({"type": "chat_done", "response": response, "chat_id": chat_id})
     return {"ok": True, "response": response, "chat_id": chat_id}
+
+
+# --- Council: Claude / GPT / Gemini debate ---
+@app.post("/api/council")
+async def council_endpoint(request: Request):
+    body = await request.json()
+    question = (body.get("question") or "").strip()
+    rounds = max(0, min(3, int(body.get("rounds", 1))))
+    if not question:
+        return JSONResponse({"error": "empty question"}, status_code=400)
+
+    from agent import council
+
+    def _progress(msg: str):
+        ws_manager.broadcast_threadsafe({"type": "council_progress", "message": msg})
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            None, lambda: council.convene(question, rounds=rounds, on_progress=_progress)
+        )
+    except Exception as e:
+        ws_manager.broadcast_threadsafe({"type": "council_error", "error": str(e)})
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    payload = {
+        "question": result.question,
+        "members": result.members,
+        "final_answer": result.final_answer,
+        "transcript": result.transcript,
+    }
+    ws_manager.broadcast_threadsafe({"type": "council_done", **payload})
+    return {"ok": True, **payload}
+
+
+# --- Voice: speech-to-text (OpenAI Whisper) ---
+@app.post("/api/transcribe")
+async def transcribe_endpoint(file: UploadFile = File(...)):
+    if not config.OPENAI_API_KEY:
+        return JSONResponse({"error": "OPENAI_API_KEY not set — voice input needs it"}, status_code=503)
+    data = await file.read()
+    if not data:
+        return JSONResponse({"error": "empty audio"}, status_code=400)
+
+    from openai import OpenAI
+    client = OpenAI(api_key=config.OPENAI_API_KEY)
+    name = file.filename or "speech.webm"
+    loop = asyncio.get_event_loop()
+    try:
+        tr = await loop.run_in_executor(
+            None,
+            lambda: client.audio.transcriptions.create(model="whisper-1", file=(name, data)),
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return {"text": (getattr(tr, "text", "") or "").strip()}
+
+
+# --- Voice: text-to-speech (OpenAI TTS) ---
+@app.post("/api/speak")
+async def speak_endpoint(request: Request):
+    if not config.OPENAI_API_KEY:
+        return JSONResponse({"error": "OPENAI_API_KEY not set"}, status_code=503)
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"error": "empty text"}, status_code=400)
+
+    from openai import OpenAI
+    client = OpenAI(api_key=config.OPENAI_API_KEY)
+    voice = getattr(config, "OPENAI_TTS_VOICE", "alloy")
+    loop = asyncio.get_event_loop()
+    try:
+        audio = await loop.run_in_executor(
+            None,
+            lambda: client.audio.speech.create(model="tts-1", voice=voice, input=text[:4000]).content,
+        )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 # --- WebSocket live stream ---
