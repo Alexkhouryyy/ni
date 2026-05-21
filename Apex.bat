@@ -9,20 +9,29 @@ echo     A P E X
 echo   ===========================================
 echo.
 
-REM ---- 1. Locate Python ----
+REM ---- 1. Locate Python (auto-install if missing) ----
 set "PYCMD="
 where python >nul 2>&1 && set "PYCMD=python"
 if not defined PYCMD where py >nul 2>&1 && set "PYCMD=py"
 if not defined PYCMD (
-    echo   [X] Python was not found on this PC.
+    echo   [setup] Python is not installed - setting it up for you...
+    where winget >nul 2>&1
+    if errorlevel 1 (
+        echo   [X] Automatic install needs 'winget', which this PC lacks.
+        echo       Install Python 3.10+ manually from:
+        echo         https://www.python.org/downloads/
+        echo       TICK "Add python.exe to PATH", then run Apex.bat again.
+        echo.
+        pause
+        exit /b 1
+    )
+    winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
     echo.
-    echo       Install Python 3.10 or newer from:
-    echo         https://www.python.org/downloads/
-    echo       During setup, TICK "Add python.exe to PATH", then
-    echo       double-click this file again.
+    echo   [setup] Python installed. Windows needs a fresh window to see it.
+    echo           Close this window and double-click Apex.bat once more.
     echo.
     pause
-    exit /b 1
+    exit /b 0
 )
 
 REM ---- 2. Create the virtual environment (first run only) ----
