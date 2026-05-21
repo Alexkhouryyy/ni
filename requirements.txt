@@ -29,5 +29,5 @@ replicate
 python-multipart
 prompt_toolkit  # terminal UI mode (--tui)
 cryptography    # Ed25519 verification for inbound Discord interactions
-openai          # optional: needed for multi-provider fallback (OpenRouter)
+openai>=1.40.0   # required for GPT models, Gemini (OpenAI-compatible endpoint), and OpenAI voice
 pytest>=8.0
