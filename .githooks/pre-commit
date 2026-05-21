@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Pre-commit hook — blocks commits that would leak secrets.
+#
+# Activate once per clone:
+#   git config core.hooksPath .githooks
+#
+# Bypass for a verified false positive:
+#   git commit --no-verify
+set -u
+
+fail=0
+
+# 1. Block secret-bearing files by name (.env, *.key, *.pem, ...).
+while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    base=$(basename "$f")
+    case "$base" in
+        .env.example) ;;                       # the only env file allowed
+        .env|.env.*)
+            echo "BLOCKED: '$f' is an env/secrets file and must not be committed."
+            fail=1 ;;
+    esac
+    case "$base" in
+        *.key|*.pem)
+            echo "BLOCKED: '$f' looks like a private key/cert and must not be committed."
+            fail=1 ;;
+    esac
+done <<< "$(git diff --cached --name-only --diff-filter=ACM)"
+
+# 2. Scan newly-added lines for live API-key patterns.
+patterns='sk-ant-api[0-9]{2}-|sk-proj-[A-Za-z0-9_-]{20,}|AIzaSy[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{40,}'
+hits=$(git diff --cached --no-color -U0 | grep -E '^\+' | grep -Ev '^\+\+\+' | grep -nE "$patterns" || true)
+if [ -n "$hits" ]; then
+    echo "BLOCKED: staged changes contain something that looks like an API key:"
+    echo "$hits" | sed 's/^/  /'
+    fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+    echo ""
+    echo "Commit aborted. Keep secrets in .env (gitignored) and read them with os.getenv()."
+    echo "False positive? Re-run with:  git commit --no-verify"
+    exit 1
+fi
+
+exit 0
