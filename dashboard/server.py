@@ -104,6 +104,26 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+@app.middleware("http")
+async def _auth(request: Request, call_next):
+    token = config.DASHBOARD_TOKEN
+    if not token:
+        return await call_next(request)
+    if request.url.path == "/health":
+        return await call_next(request)
+    auth = request.headers.get("Authorization", "")
+    if auth == f"Bearer {token}":
+        return await call_next(request)
+    if request.url.path == "/ws/live" and request.query_params.get("token") == token:
+        return await call_next(request)
+    return Response("Unauthorized", status_code=401)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     index_path = STATIC_DIR / "index.html"
@@ -451,11 +471,12 @@ _START_TIME = time.time()
 
 
 # === Public API: start in a background thread ===
-def start_in_background(port: int = 7860, host: str = "127.0.0.1") -> threading.Thread:
+def start_in_background(port: int = 7860, host: str | None = None) -> threading.Thread:
     import uvicorn
 
     def runner():
-        cfg = uvicorn.Config(app, host=host, port=port, log_level="warning")
+        _host = host if host is not None else config.DASHBOARD_HOST
+        cfg = uvicorn.Config(app, host=_host, port=port, log_level="warning")
         server = uvicorn.Server(cfg)
         server.run()
 

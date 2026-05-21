@@ -247,8 +247,9 @@ def main():
                     })
                 monitor.log.add = _add_and_broadcast
             port = getattr(config, "DASHBOARD_PORT", 7860)
+            host = getattr(config, "DASHBOARD_HOST", "127.0.0.1")
             dash.start_in_background(port=port)
-            print(f"[Dashboard] http://127.0.0.1:{port}")
+            print(f"[Dashboard] http://{host}:{port}")
         except Exception as e:
             print(f"[Dashboard] Failed to start: {e}")
 

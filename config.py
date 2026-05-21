@@ -52,7 +52,9 @@ MAX_ITERATIONS = 30                   # max tool-use iterations per agent turn
 
 # Dashboard
 DASHBOARD_ENABLED = True
-DASHBOARD_PORT = 7860
+DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "7860"))
+DASHBOARD_HOST  = os.getenv("DASHBOARD_HOST", "127.0.0.1")
+DASHBOARD_TOKEN = os.getenv("DASHBOARD_TOKEN", "")
 
 # OCR / vision precision
 OCR_CONFIDENCE_THRESHOLD = 30

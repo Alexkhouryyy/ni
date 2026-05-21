@@ -19,7 +19,7 @@ from typing import Optional
 
 import numpy as np
 
-DB_PATH = os.path.expanduser("~/.voice_agent_memory.db")
+DB_PATH = os.path.expanduser(os.getenv("DB_PATH", "~/.voice_agent_memory.db"))
 
 _embed_model = None
 _embed_lock = None
