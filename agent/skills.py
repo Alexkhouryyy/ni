@@ -163,10 +163,20 @@ def create_skill(name: str, description: str, code: str, version: str = "1.0") -
         f"VERSION = {version!r}\n\n"
         f"{code}\n"
     )
+    old_source = path.read_text() if path.exists() else None
     path.write_text(source)
     try:
         _load(name)
     except Exception as e:
+        if old_source is not None:
+            # Overwrite failed — restore the previously working version so a bad
+            # rewrite (e.g. from refine_skills) can never destroy a good skill.
+            path.write_text(old_source)
+            try:
+                _load(name)
+            except Exception:
+                pass
+            return f"Skill {name!r} kept at previous version — new code failed to import: {e}"
         path.unlink(missing_ok=True)
         return f"Skill written but import failed: {e}"
     return f"Skill {name!r} created and loaded from {path}."

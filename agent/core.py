@@ -1244,6 +1244,11 @@ def _propose_skill(client, user_text: str, tool_names: list[str]) -> None:
         name, desc, code = spec.get("name", ""), spec.get("description", ""), spec.get("code", "")
         if not (name and desc and code):
             return
+        if name in skills_mod.discover():
+            # Auto-create only creates NEW skills; refinement is the only path
+            # allowed to overwrite an existing one.
+            print(f"[AutoSkill] skipped — skill {name!r} already exists.")
+            return
         print(f"[AutoSkill] {skills_mod.create_skill(name, desc, code)}")
     except Exception as e:
         print(f"[AutoSkill] proposal failed: {e}")
@@ -1465,6 +1470,8 @@ class AgentCore:
             # Self-improving skills: off-thread, propose a skill for complex turns.
             self._maybe_autocreate_skill(turn_tool_names, user_text)
 
+            if cancel_event is not None and cancel_event.is_set():
+                return final_text or "[turn interrupted]"
             if stop_reason == "end_turn":
                 return final_text
             return final_text or "I hit my iteration limit. Something may have gone wrong — let me know how to proceed."
