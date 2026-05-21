@@ -8,10 +8,16 @@ import json
 from typing import Any
 
 
+# Google's OpenAI-compatible endpoint — lets the OpenAI SDK talk to Gemini.
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
 def provider_for(model: str) -> str:
-    """Return 'anthropic' or 'openai' based on model name."""
+    """Return 'anthropic', 'openai', or 'gemini' based on model name."""
     if model.startswith("claude"):
         return "anthropic"
+    if model.startswith("gemini"):
+        return "gemini"
     return "openai"
 
 
@@ -25,6 +31,9 @@ KNOWN_MODELS = {
     "gpt-4-turbo",
     "o1", "o1-mini",
     "o3-mini",
+    # Google Gemini
+    "gemini-2.5-pro", "gemini-2.5-flash",
+    "gemini-2.0-flash",
 }
 
 
@@ -363,9 +372,39 @@ class _Messages:
 
 
 class OpenAIAdapter:
-    """Drop-in replacement for anthropic.Anthropic() inside AgentCore."""
+    """Drop-in replacement for anthropic.Anthropic() inside AgentCore.
 
-    def __init__(self, api_key: str):
+    Works for both OpenAI and Google Gemini — Gemini exposes an
+    OpenAI-compatible endpoint, so only the base_url and key differ.
+    """
+
+    def __init__(self, api_key: str, base_url: str | None = None):
         from openai import OpenAI
-        self._oai = OpenAI(api_key=api_key)
+        self._oai = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
         self.messages = _Messages(self._oai)
+
+
+def get_client(model: str):
+    """Return a provider client (Anthropic SDK or OpenAIAdapter) for a model."""
+    import config
+    p = provider_for(model)
+    if p == "anthropic":
+        import anthropic
+        return anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, max_retries=config.API_MAX_RETRIES)
+    if p == "gemini":
+        return OpenAIAdapter(config.GEMINI_API_KEY, base_url=GEMINI_BASE_URL)
+    return OpenAIAdapter(config.OPENAI_API_KEY)
+
+
+def complete(model: str, system: str, user: str, max_tokens: int = 2048) -> str:
+    """One-shot text completion against any provider. Returns plain text."""
+    client = get_client(model)
+    resp = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    )
+    return "".join(
+        getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
+    ).strip()

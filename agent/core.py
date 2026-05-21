@@ -84,6 +84,10 @@ something important, SMS them. Use call_user only for things that genuinely warr
 Returns local file paths. Reference them in your reply.
 - **usage_summary / replay_session**: Self-observability. Use when the user asks about cost, \
 token usage, cache performance, or wants to debug what happened in a past session.
+- **council**: Convene a multi-model council — Claude, GPT, and Gemini answer, debate each \
+other, and a chair synthesizes the best answer. Use for high-stakes or contested questions \
+where one model isn't enough: hard decisions, design tradeoffs, disputed facts. It is slower \
+and costlier than a normal answer, so reserve it for questions that genuinely warrant it.
 - **read_file**: Read a file
 - **write_file**: Create or overwrite a file
 - **append_file**: Append to a file
@@ -858,6 +862,26 @@ TOOLS = [
             "required": ["name", "description", "code"],
         },
     },
+    # --- Multi-model council ---
+    {
+        "name": "council",
+        "description": (
+            "Convene a multi-model council — Claude, GPT, and Gemini answer a "
+            "question, debate each other's answers, and a chair synthesizes the "
+            "single best answer. Use for high-stakes or contested questions where "
+            "one model's answer isn't enough: hard decisions, design tradeoffs, "
+            "disputed facts, important reviews. Slower and more expensive than a "
+            "normal answer — reserve it for questions that genuinely warrant it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "The question for the council to debate"},
+                "rounds": {"type": "integer", "description": "Debate rounds after the opening (default 1)", "default": 1},
+            },
+            "required": ["question"],
+        },
+    },
 ]
 
 
@@ -1134,6 +1158,18 @@ def _execute_tool(name: str, inputs: dict) -> str:
                 version=inputs.get("version", "1.0"),
             )
 
+        # --- Multi-model council ---
+        elif name == "council":
+            from agent import council as council_mod
+            result = council_mod.convene(
+                inputs["question"],
+                rounds=int(inputs.get("rounds", 1)),
+            )
+            return json.dumps({
+                "council_members": result.members,
+                "final_answer": result.final_answer,
+            }, indent=2)
+
         else:
             # Try dynamic tools registered via self_mod
             dyn_result = self_mod.dispatch(name, inputs)
@@ -1261,6 +1297,7 @@ class AgentCore:
             max_retries=config.API_MAX_RETRIES,
         )
         self._openai_adapter = None          # lazily initialized on first OpenAI call
+        self._gemini_adapter = None          # lazily initialized on first Gemini call
         self._model: str = config.AGENT_MODEL
         self.memory = Memory()               # main loop / voice channel
         self._mcp_tools: list[dict] = []
@@ -1272,9 +1309,14 @@ class AgentCore:
 
     @property
     def client(self):
-        """Returns the active provider client (Anthropic or OpenAI adapter)."""
-        from agent.provider import provider_for, OpenAIAdapter
-        if provider_for(self._model) == "openai":
+        """Returns the active provider client (Anthropic, OpenAI, or Gemini)."""
+        from agent.provider import provider_for, OpenAIAdapter, GEMINI_BASE_URL
+        p = provider_for(self._model)
+        if p == "gemini":
+            if self._gemini_adapter is None:
+                self._gemini_adapter = OpenAIAdapter(config.GEMINI_API_KEY, base_url=GEMINI_BASE_URL)
+            return self._gemini_adapter
+        if p == "openai":
             if self._openai_adapter is None:
                 self._openai_adapter = OpenAIAdapter(config.OPENAI_API_KEY)
             return self._openai_adapter
@@ -1290,8 +1332,11 @@ class AgentCore:
         from agent.provider import KNOWN_MODELS, provider_for
         if model not in KNOWN_MODELS:
             return f"Unknown model '{model}'. Known: {', '.join(sorted(KNOWN_MODELS))}"
-        if provider_for(model) == "openai" and not config.OPENAI_API_KEY:
+        p = provider_for(model)
+        if p == "openai" and not config.OPENAI_API_KEY:
             return "OPENAI_API_KEY not set — add it to .env and restart."
+        if p == "gemini" and not config.GEMINI_API_KEY:
+            return "GEMINI_API_KEY not set — add it to .env and restart."
         self._model = model
         return f"Switched to {model}"
 

@@ -365,6 +365,25 @@ def main():
                 speak(result)
             continue
 
+        # /council command — Claude, GPT, and Gemini debate to the best answer
+        if user_input.startswith("/council"):
+            parts = user_input.split(None, 1)
+            if len(parts) < 2:
+                speak("Usage: /council <question>")
+            else:
+                from agent import council
+                print("\n[Council convening...]\n")
+                result = council.convene(
+                    parts[1].strip(),
+                    rounds=1,
+                    on_progress=lambda m: print(f"  [council] {m}"),
+                )
+                for entry in result.transcript:
+                    tag = "Opening" if entry["round"] == 0 else f"Debate {entry['round']}"
+                    print(f"\n--- {entry['label']} ({tag}) ---\n{entry['text']}\n")
+                speak(f"COUNCIL VERDICT (members: {', '.join(result.members)}):\n\n{result.final_answer}")
+            continue
+
         # Determine if this warrants deep thinking
         think = args.think or _needs_thinking(user_input)
         if think:

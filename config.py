@@ -65,6 +65,7 @@ OCR_CONFIDENCE_THRESHOLD = 30
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # Research
 MAX_SEARCH_RESULTS = 6
@@ -111,6 +112,10 @@ MODEL_PRICING = {
     "o1":                        {"input": 15.0,  "output": 60.0,  "cache_read": 7.5,  "cache_create": 0.0},
     "o1-mini":                   {"input": 1.1,   "output": 4.4,   "cache_read": 0.55, "cache_create": 0.0},
     "o3-mini":                   {"input": 1.1,   "output": 4.4,   "cache_read": 0.55, "cache_create": 0.0},
+    # Google Gemini
+    "gemini-2.5-pro":            {"input": 1.25,  "output": 10.0,  "cache_read": 0.31, "cache_create": 0.0},
+    "gemini-2.5-flash":          {"input": 0.30,  "output": 2.50,  "cache_read": 0.075,"cache_create": 0.0},
+    "gemini-2.0-flash":          {"input": 0.10,  "output": 0.40,  "cache_read": 0.025,"cache_create": 0.0},
 }
 
 # Reflection
