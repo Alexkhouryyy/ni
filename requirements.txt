@@ -27,5 +27,7 @@ playwright
 twilio
 replicate
 python-multipart
+prompt_toolkit  # terminal UI mode (--tui)
+cryptography    # Ed25519 verification for inbound Discord interactions
 openai          # optional: needed for multi-provider fallback (OpenRouter)
 pytest>=8.0

@@ -27,6 +27,7 @@ if not config.ANTHROPIC_API_KEY:
 def build_parser():
     p = argparse.ArgumentParser(description="Voice AI Agent")
     p.add_argument("--text", action="store_true", help="Text I/O instead of voice")
+    p.add_argument("--tui", action="store_true", help="Rich terminal UI: streaming output + interrupt-and-redirect")
     p.add_argument("--think", action="store_true", help="Enable extended thinking for all queries")
     p.add_argument("--no-proactive", action="store_true", help="Disable proactive screen monitoring")
     p.add_argument("--no-screenshot", action="store_true", help="Don't auto-attach screenshot to each message")
@@ -43,7 +44,7 @@ def main():
     print("\n" + "="*60)
     print("  Voice AI Agent")
     print("  Model:     ", config.AGENT_MODEL)
-    print("  Mode:      ", "text" if args.text else "voice")
+    print("  Mode:      ", "tui" if args.tui else ("text" if args.text else "voice"))
     print("  Thinking:  ", "on" if args.think else "auto")
     print("  Proactive: ", "on" if config.PROACTIVE_ENABLED else "off")
     print("  Wake word: ", "on" if args.wake else "off")
@@ -74,7 +75,7 @@ def main():
     threading.Thread(target=_load_mcp, daemon=True, name="MCPDiscover").start()
 
     # Initialize I/O
-    if args.text:
+    if args.text or args.tui:
         def speak(text: str):
             print(f"\nAGENT: {text}\n")
 
@@ -97,7 +98,7 @@ def main():
     from agent import safety as _safety
     def _voice_confirm(reason: str) -> bool:
         speak(f"Safety check. {reason}. Say yes to proceed.")
-        answer = listen() if not args.text else input("Proceed? (y/N): ").strip()
+        answer = listen() if not (args.text or args.tui) else input("Proceed? (y/N): ").strip()
         return answer.lower() in {"yes", "y", "yeah", "yep", "do it", "confirm"}
     _safety.set_confirm_fn(_voice_confirm)
 
@@ -176,6 +177,15 @@ def main():
         except Exception as e:
             return f"Agent error: {e}"
     _telegram.set_agent_run_fn(_telegram_agent_run)
+
+    # Discord inbound dispatch
+    from tools import discord as _discord
+    def _discord_agent_run(text: str, *, channel_id: str | None = None) -> str:
+        try:
+            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
+        except Exception as e:
+            return f"Agent error: {e}"
+    _discord.set_agent_run_fn(_discord_agent_run)
 
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:
@@ -271,6 +281,15 @@ def main():
 
     monitor.start()
 
+    # TUI mode: hand off to the terminal UI, which owns the input loop.
+    if args.tui:
+        from tui.app import run_tui
+        try:
+            run_tui(agent)
+        finally:
+            shutdown()
+        return
+
     # Greeting
     greeting = (
         "I'm online. I can see your screen, run commands, search the web, and control your computer. "
@@ -281,7 +300,7 @@ def main():
     # Wake word mode setup
     wake_event = threading.Event()
     wake_listener = None
-    if args.wake and not args.text:
+    if args.wake and not args.text and not args.tui:
         from voice.wake import WakeWordListener
         wake_listener = WakeWordListener(wake_phrases=config.WAKE_PHRASES)
         wake_listener.start(on_wake=wake_event.set)

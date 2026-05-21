@@ -16,7 +16,7 @@ from agent import reflection
 from agent import telemetry
 from agent import resilience
 from agent import skills as skills_mod
-from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen, telegram
+from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen, telegram, discord
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
 research capabilities, and a bash terminal. You are running on the user's machine and can see their screen.
@@ -754,6 +754,18 @@ TOOLS = [
             "required": ["chat_id", "text"],
         },
     },
+    {
+        "name": "discord_send",
+        "description": "Send a message to a Discord channel via the bot. Use proactively when something important finishes and the user prefers Discord.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel_id": {"type": "string", "description": "Discord channel ID (snowflake). Falls back to DISCORD_DEFAULT_CHANNEL_ID if omitted."},
+                "text": {"type": "string", "description": "Message text (≤2000 chars)."},
+            },
+            "required": ["text"],
+        },
+    },
     # --- Tier-4: Image generation ---
     {
         "name": "generate_image",
@@ -1081,6 +1093,11 @@ def _execute_tool(name: str, inputs: dict) -> str:
             return phone.voice_call(inputs["to"], inputs["message"])
         elif name == "telegram_send":
             return telegram.send_message(inputs["chat_id"], inputs["text"])
+        elif name == "discord_send":
+            channel = inputs.get("channel_id") or config.DISCORD_DEFAULT_CHANNEL_ID
+            if not channel:
+                return "[Discord] No channel_id given and DISCORD_DEFAULT_CHANNEL_ID is not set."
+            return discord.send_message(channel, inputs["text"])
 
         # --- Tier-4: Image generation ---
         elif name == "generate_image":
@@ -1173,6 +1190,65 @@ def _make_tool_result_content(name: str, tool_use_id: str, result_str: str) -> d
     }
 
 
+# --- Self-improving skills: background auto-creation ---------------------------
+# Cap concurrent proposal threads so rapid complex turns can't pile up LLM calls.
+_skill_autocreate_sema = threading.Semaphore(2)
+
+_SKILL_PROPOSE_PROMPT = """You just finished a multi-step task for the user. Decide \
+whether the work is worth packaging as a reusable SKILL — a small, parameterized \
+Python function the agent could call again on similar future requests.
+
+The user's request was:
+{user_text}
+
+Tools used this turn: {tools}
+Existing skills (do NOT duplicate these): {existing}
+
+Package it ONLY if it represents a GENERAL, REPEATABLE capability — not a one-off, \
+not something trivial, not something an existing skill already covers.
+
+If it IS worth packaging, output a JSON object:
+  {{"create": true, "name": "snake_case_name", "description": "one concise line",
+    "code": "def run(inputs: dict) -> str:\\n    ..."}}
+The code must define `def run(inputs: dict) -> str` and use only the Python standard
+library. Otherwise output: {{"create": false}}
+
+Output ONLY the JSON object, nothing else."""
+
+
+def _propose_skill(client, user_text: str, tool_names: list[str]) -> None:
+    """One LLM call: decide if the just-completed turn should become a skill."""
+    try:
+        existing = ", ".join(s["name"] for s in skills_mod.list_skills()) or "(none)"
+        prompt = _SKILL_PROPOSE_PROMPT.format(
+            user_text=user_text[:1500],
+            tools=", ".join(tool_names) or "(none)",
+            existing=existing,
+        )
+        resp = telemetry.create(
+            client,
+            call_site="agent.core/skill_propose",
+            model=config.PROACTIVE_MODEL,
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(
+            getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
+        )
+        start, end = text.find("{"), text.rfind("}") + 1
+        if start < 0 or end <= start:
+            return
+        spec = json.loads(text[start:end])
+        if not spec.get("create"):
+            return
+        name, desc, code = spec.get("name", ""), spec.get("description", ""), spec.get("code", "")
+        if not (name and desc and code):
+            return
+        print(f"[AutoSkill] {skills_mod.create_skill(name, desc, code)}")
+    except Exception as e:
+        print(f"[AutoSkill] proposal failed: {e}")
+
+
 class AgentCore:
     def __init__(self):
         self.client = anthropic.Anthropic(
@@ -1229,7 +1305,28 @@ class AgentCore:
                 self._channel_locks[channel_id] = threading.Lock()
             return self._channel_memories[channel_id], self._channel_locks[channel_id]
 
-    def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None, *, channel_id: str | None = None, max_iterations: int | None = None) -> str:
+    def _maybe_autocreate_skill(self, tool_names: list[str], user_text: str) -> None:
+        """After a sufficiently complex turn, propose a reusable skill in the background.
+
+        Runs off-thread so it never adds latency to the user's turn. Skipped when
+        the turn already created a skill, or when too many proposals are in flight.
+        """
+        if len(tool_names) < config.SKILL_AUTOCREATE_MIN_TOOLS:
+            return
+        if "create_skill" in tool_names:
+            return
+        if not _skill_autocreate_sema.acquire(blocking=False):
+            return
+
+        def _worker():
+            try:
+                _propose_skill(self.client, user_text, tool_names)
+            finally:
+                _skill_autocreate_sema.release()
+
+        threading.Thread(target=_worker, daemon=True, name="SkillAutoCreate").start()
+
+    def run(self, user_text: str, include_screenshot: bool = True, use_thinking: bool = False, streamer=None, *, channel_id: str | None = None, max_iterations: int | None = None, cancel_event: "threading.Event | None" = None) -> str:
         """Run a full agent turn. Returns the final text response.
 
         If `streamer` is provided (a StreamingSpeaker), text deltas are fed to it
@@ -1275,9 +1372,14 @@ class AgentCore:
             max_iterations = max_iterations if max_iterations is not None else config.MAX_ITERATIONS
             iteration = 0
             final_text = ""
+            stop_reason = ""
+            turn_tool_names: list[str] = []
 
             while iteration < max_iterations:
                 iteration += 1
+
+                if cancel_event is not None and cancel_event.is_set():
+                    break
 
                 kwargs = dict(
                     model=config.AGENT_MODEL,
@@ -1295,7 +1397,7 @@ class AgentCore:
                 # end the turn gracefully instead of crashing the caller.
                 try:
                     if streamer is not None:
-                        response_content, stop_reason, this_text = self._stream_turn(kwargs, streamer)
+                        response_content, stop_reason, this_text = self._stream_turn(kwargs, streamer, cancel_event)
                     else:
                         resp = telemetry.create(self.client, call_site="agent.core/main", **kwargs)
                         response_content = resp.content
@@ -1341,9 +1443,6 @@ class AgentCore:
                 except Exception:
                     pass
 
-                if stop_reason == "end_turn":
-                    return final_text
-
                 if stop_reason != "tool_use":
                     break
 
@@ -1353,6 +1452,7 @@ class AgentCore:
                     if getattr(block, "type", "") != "tool_use":
                         continue
                     print(f"[TOOL] {block.name}({json.dumps(block.input, ensure_ascii=False)[:120]})")
+                    turn_tool_names.append(block.name)
                     result_str = _execute_tool(block.name, block.input)
                     tool_results.append(_make_tool_result_content(block.name, block.id, result_str))
                     try:
@@ -1362,15 +1462,29 @@ class AgentCore:
 
                 memory.add_user(tool_results)
 
+            # Self-improving skills: off-thread, propose a skill for complex turns.
+            self._maybe_autocreate_skill(turn_tool_names, user_text)
+
+            if stop_reason == "end_turn":
+                return final_text
             return final_text or "I hit my iteration limit. Something may have gone wrong — let me know how to proceed."
 
-    def _stream_turn(self, kwargs: dict, streamer) -> tuple[list, str, str]:
-        """Run one streamed turn, feeding text deltas to the streamer."""
+    def _stream_turn(self, kwargs: dict, streamer, cancel_event: "threading.Event | None" = None) -> tuple[list, str, str]:
+        """Run one streamed turn, feeding text deltas to the streamer.
+
+        If `cancel_event` is set mid-stream, the turn is interrupted: the partial
+        text is returned with an [INTERRUPTED] marker and stop_reason 'end_turn',
+        so the caller ends the turn cleanly with a consistent conversation history.
+        """
         import time as _time
         accumulated_text = ""
         start = _time.time()
         with self.client.messages.stream(**kwargs) as stream:
             for event in stream:
+                if cancel_event is not None and cancel_event.is_set():
+                    out = accumulated_text.strip()
+                    marked = (out + " [INTERRUPTED]") if out else "[INTERRUPTED]"
+                    return [{"type": "text", "text": marked}], "end_turn", out
                 etype = getattr(event, "type", "")
                 if etype == "content_block_delta":
                     delta = getattr(event, "delta", None)

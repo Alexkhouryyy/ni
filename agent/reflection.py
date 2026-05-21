@@ -199,7 +199,82 @@ def consolidate(client, hours: int = 24, autosave: bool = True) -> dict:
                 except Exception as e:
                     print(f"[Reflection] auto-apply failed: {e}")
 
-    return {"created": created, "applied": applied, "pending": created - applied}
+    # Self-improving skills: rewrite any skill that has been failing repeatedly.
+    skills_refined = 0
+    try:
+        skills_refined = refine_skills(client, hours=hours).get("refined", 0)
+    except Exception as e:
+        print(f"[Reflection] skill refinement failed: {e}")
+
+    return {
+        "created": created, "applied": applied, "pending": created - applied,
+        "skills_refined": skills_refined,
+    }
+
+
+_SKILL_REFINE_PROMPT = """One of your installed skills has been failing repeatedly. \
+Rewrite its `run` function to fix the errors below.
+
+SKILL: {name}
+
+CURRENT SOURCE:
+{source}
+
+RECENT ERRORS ({count} failures):
+{errors}
+
+Output ONLY a JSON object:
+  {{"code": "def run(inputs: dict) -> str:\\n    ..."}}
+The code must define `def run(inputs: dict) -> str`, keep the same input contract, \
+and use only the Python standard library. If you cannot determine a safe fix, \
+output {{"code": ""}}."""
+
+
+def refine_skills(client, hours: int = 24) -> dict:
+    """Rewrite skills that failed repeatedly in the window. Returns counts."""
+    from agent import skills as skills_mod
+
+    candidates = skills_mod.failure_stats(hours=hours, min_failures=3)
+    refined = 0
+    for cand in candidates:
+        name = cand["name"]
+        source = skills_mod.read_source(name)
+        if not source:
+            continue
+        prompt = _SKILL_REFINE_PROMPT.format(
+            name=name,
+            source=source[:6000],
+            count=cand["failures"],
+            errors="\n".join(f"  - {e}" for e in cand["errors"]) or "  (no error text captured)",
+        )
+        try:
+            resp = telemetry.create(
+                client,
+                call_site="agent.reflection/refine_skill",
+                model=config.AGENT_MODEL,
+                max_tokens=3000,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as e:
+            print(f"[Reflection] skill refine call failed for {name!r}: {e}")
+            continue
+        text = "".join(
+            getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
+        )
+        s, e = text.find("{"), text.rfind("}") + 1
+        if s < 0 or e <= s:
+            continue
+        try:
+            new_code = json.loads(text[s:e]).get("code", "")
+        except Exception:
+            continue
+        if not new_code.strip():
+            continue
+        result = skills_mod.create_skill(name, skills_mod.get_description(name), new_code)
+        print(f"[Reflection] refined skill {name!r}: {result}")
+        if "created and loaded" in result:
+            refined += 1
+    return {"candidates": len(candidates), "refined": refined}
 
 
 def _apply_action(action: dict) -> None:

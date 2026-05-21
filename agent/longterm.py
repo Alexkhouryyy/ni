@@ -215,6 +215,19 @@ def init_db():
         if not had_trigger:
             c.execute("INSERT INTO turn_log_fts(turn_log_fts) VALUES('rebuild')")
 
+        # --- Self-improving skills: per-run usage telemetry ---
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS skill_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                name TEXT NOT NULL,
+                success INTEGER NOT NULL,        -- 1 = ok, 0 = raised
+                duration REAL,                   -- seconds
+                error TEXT                       -- NULL on success
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_skill_usage_name ON skill_usage(name, ts DESC)")
+
 
 @contextmanager
 def _conn():

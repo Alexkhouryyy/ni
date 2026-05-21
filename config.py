@@ -102,3 +102,12 @@ MODEL_PRICING = {
 
 # Reflection
 REFLECTION_AUTO_APPLY_THRESHOLD = 0.85
+
+# Self-improving skills
+SKILL_AUTOCREATE_MIN_TOOLS = 4   # tool calls in a turn before proposing a reusable skill
+
+# Discord bot
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+DISCORD_PUBLIC_KEY = os.getenv("DISCORD_PUBLIC_KEY", "")
+DISCORD_DEFAULT_CHANNEL_ID = os.getenv("DISCORD_DEFAULT_CHANNEL_ID", "")
+DISCORD_ALLOWED_USER_IDS = [x.strip() for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()]

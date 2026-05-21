@@ -27,6 +27,7 @@ from agent import reflection as refl_mod
 from agent import telemetry as tel_mod
 from tools import phone as phone_mod
 from tools import telegram as telegram_mod
+from tools import discord as discord_mod
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -373,6 +374,25 @@ def telegram_status():
     return {
         "configured": telegram_mod.is_configured(),
         "allowed_chat_ids": getattr(config, "TELEGRAM_ALLOWED_CHAT_IDS", []),
+    }
+
+
+@app.post("/discord/interactions")
+async def discord_interactions(request: Request):
+    body = await request.body()
+    sig = request.headers.get("X-Signature-Ed25519", "")
+    ts = request.headers.get("X-Signature-Timestamp", "")
+    if not discord_mod.verify_signature(sig, ts, body):
+        return Response(content="invalid request signature", status_code=401)
+    interaction = json.loads(body)
+    return JSONResponse(discord_mod.dispatch_interaction(interaction))
+
+
+@app.get("/api/discord/status")
+def discord_status():
+    return {
+        "configured": discord_mod.is_configured(),
+        "allowed_user_ids": getattr(config, "DISCORD_ALLOWED_USER_IDS", []),
     }
 
 
