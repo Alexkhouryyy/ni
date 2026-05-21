@@ -32,6 +32,7 @@ def build_parser():
     p.add_argument("--no-proactive", action="store_true", help="Disable proactive screen monitoring")
     p.add_argument("--no-screenshot", action="store_true", help="Don't auto-attach screenshot to each message")
     p.add_argument("--wake", action="store_true", help="Hands-free wake word mode (say 'hey agent')")
+    p.add_argument("--model", type=str, default=None, help="Override starting model (e.g. gpt-4o, claude-sonnet-4-6)")
     return p
 
 
@@ -63,6 +64,9 @@ def main():
     if memories:
         print(f"[Memory] Loaded {len(memories)} long-term memories.")
     agent = AgentCore()
+    if args.model:
+        result = agent.set_model(args.model)
+        print(f"[Model] {result}")
     if memories:
         agent.memory.summary = longterm.format_for_context(memories)
 
@@ -195,7 +199,7 @@ def main():
             """Lightweight Haiku call: decide if events warrant interrupting."""
             try:
                 resp = telemetry.create(
-                    agent.client,
+                    agent.anthropic,
                     call_site="agent.awareness/review",
                     model=config.PROACTIVE_MODEL,
                     max_tokens=200,
@@ -348,6 +352,18 @@ def main():
 
         if user_input.lower() in {"quit", "exit", "bye", "goodbye", "stop"}:
             shutdown()
+
+        # /model command — switch providers at runtime
+        if user_input.startswith("/model"):
+            parts = user_input.split(None, 1)
+            if len(parts) < 2:
+                from agent.provider import KNOWN_MODELS
+                current = agent._model
+                speak(f"Current model: {current}\nAvailable: {', '.join(sorted(KNOWN_MODELS))}")
+            else:
+                result = agent.set_model(parts[1].strip())
+                speak(result)
+            continue
 
         # Determine if this warrants deep thinking
         think = args.think or _needs_thinking(user_input)

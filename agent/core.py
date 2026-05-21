@@ -1256,10 +1256,12 @@ def _propose_skill(client, user_text: str, tool_names: list[str]) -> None:
 
 class AgentCore:
     def __init__(self):
-        self.client = anthropic.Anthropic(
+        self.anthropic = anthropic.Anthropic(
             api_key=config.ANTHROPIC_API_KEY,
             max_retries=config.API_MAX_RETRIES,
         )
+        self._openai_adapter = None          # lazily initialized on first OpenAI call
+        self._model: str = config.AGENT_MODEL
         self.memory = Memory()               # main loop / voice channel
         self._mcp_tools: list[dict] = []
         self._mcp_loaded = False
@@ -1267,6 +1269,31 @@ class AgentCore:
         self._channel_memories: dict[str, Memory] = {}
         self._channel_locks: dict[str, threading.Lock] = {}
         self._channels_mutex = threading.Lock()
+
+    @property
+    def client(self):
+        """Returns the active provider client (Anthropic or OpenAI adapter)."""
+        from agent.provider import provider_for, OpenAIAdapter
+        if provider_for(self._model) == "openai":
+            if self._openai_adapter is None:
+                self._openai_adapter = OpenAIAdapter(config.OPENAI_API_KEY)
+            return self._openai_adapter
+        return self.anthropic
+
+    @client.setter
+    def client(self, value):
+        """Allow tests (and legacy code) to override the active client directly."""
+        self.anthropic = value
+
+    def set_model(self, model: str) -> str:
+        """Switch the active model at runtime. Returns a status string."""
+        from agent.provider import KNOWN_MODELS, provider_for
+        if model not in KNOWN_MODELS:
+            return f"Unknown model '{model}'. Known: {', '.join(sorted(KNOWN_MODELS))}"
+        if provider_for(model) == "openai" and not config.OPENAI_API_KEY:
+            return "OPENAI_API_KEY not set — add it to .env and restart."
+        self._model = model
+        return f"Switched to {model}"
 
     def load_mcp_tools(self) -> int:
         """Discover MCP servers and register their tools. Returns count added."""
@@ -1325,7 +1352,7 @@ class AgentCore:
 
         def _worker():
             try:
-                _propose_skill(self.client, user_text, tool_names)
+                _propose_skill(self.anthropic, user_text, tool_names)
             finally:
                 _skill_autocreate_sema.release()
 
@@ -1344,7 +1371,7 @@ class AgentCore:
         """
         memory, lock = self._get_channel(channel_id)
         with lock:
-            memory.maybe_summarize(self.client)
+            memory.maybe_summarize(self.anthropic)
 
             # Build user message content
             user_content: list = []
@@ -1387,7 +1414,7 @@ class AgentCore:
                     break
 
                 kwargs = dict(
-                    model=config.AGENT_MODEL,
+                    model=self._model,
                     max_tokens=16000,
                     system=self._effective_system_prompt(),
                     tools=self._all_tools(),
@@ -1522,7 +1549,7 @@ class AgentCore:
         """Quick check: is there anything on screen worth proactively flagging?"""
         try:
             resp = telemetry.create(
-                self.client,
+                self.anthropic,
                 call_site="agent.core/proactive_check",
                 model=config.PROACTIVE_MODEL,
                 max_tokens=256,

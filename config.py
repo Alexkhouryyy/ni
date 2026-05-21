@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Model
-AGENT_MODEL = "claude-opus-4-7"
+AGENT_MODEL = os.getenv("AGENT_MODEL", "claude-opus-4-7")
 PROACTIVE_MODEL = "claude-haiku-4-5-20251001"
 THINKING_BUDGET = 8000  # tokens for extended thinking
 
@@ -22,9 +22,11 @@ MAX_RECORD_SECONDS = 60         # hard cap on recording length
 SAMPLE_RATE = 16000
 
 # TTS
-TTS_ENGINE = "pyttsx3"          # pyttsx3 or elevenlabs
+TTS_ENGINE = os.getenv("TTS_ENGINE", "pyttsx3")  # pyttsx3 | elevenlabs | openai
 TTS_RATE = 185                  # words per minute (pyttsx3)
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
+OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")   # alloy|echo|fable|onyx|nova|shimmer
+OPENAI_STT_ENGINE = os.getenv("OPENAI_STT_ENGINE", "local")  # local|openai
 
 # Proactive monitor
 PROACTIVE_INTERVAL = 30         # seconds between screen checks
@@ -62,6 +64,7 @@ OCR_CONFIDENCE_THRESHOLD = 30
 # API keys
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Research
 MAX_SEARCH_RESULTS = 6
@@ -96,10 +99,18 @@ IMAGE_GEN_OUTPUT_DIR = os.getenv("IMAGE_GEN_OUTPUT_DIR", "~/.voice_agent_images"
 # Telemetry — Anthropic per-million-token pricing (USD)
 # Update when models / prices change.
 MODEL_PRICING = {
-    "claude-opus-4-7":           {"input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_create": 18.75},
-    "claude-opus-4-6":           {"input": 15.0, "output": 75.0, "cache_read": 1.50, "cache_create": 18.75},
-    "claude-sonnet-4-6":         {"input": 3.0,  "output": 15.0, "cache_read": 0.30, "cache_create": 3.75},
-    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0,  "cache_read": 0.08, "cache_create": 1.0},
+    # Anthropic
+    "claude-opus-4-7":           {"input": 15.0,  "output": 75.0,  "cache_read": 1.50, "cache_create": 18.75},
+    "claude-opus-4-6":           {"input": 15.0,  "output": 75.0,  "cache_read": 1.50, "cache_create": 18.75},
+    "claude-sonnet-4-6":         {"input": 3.0,   "output": 15.0,  "cache_read": 0.30, "cache_create": 3.75},
+    "claude-haiku-4-5-20251001": {"input": 0.80,  "output": 4.0,   "cache_read": 0.08, "cache_create": 1.0},
+    # OpenAI
+    "gpt-4o":                    {"input": 2.5,   "output": 10.0,  "cache_read": 1.25, "cache_create": 0.0},
+    "gpt-4o-mini":               {"input": 0.15,  "output": 0.60,  "cache_read": 0.075,"cache_create": 0.0},
+    "gpt-4-turbo":               {"input": 10.0,  "output": 30.0,  "cache_read": 0.0,  "cache_create": 0.0},
+    "o1":                        {"input": 15.0,  "output": 60.0,  "cache_read": 7.5,  "cache_create": 0.0},
+    "o1-mini":                   {"input": 1.1,   "output": 4.4,   "cache_read": 0.55, "cache_create": 0.0},
+    "o3-mini":                   {"input": 1.1,   "output": 4.4,   "cache_read": 0.55, "cache_create": 0.0},
 }
 
 # Reflection

@@ -8,6 +8,38 @@ import config
 _model = None
 
 
+def _transcribe(audio: np.ndarray) -> str:
+    """Transcribe a float32 mono numpy array using the configured engine."""
+    if config.OPENAI_STT_ENGINE == "openai" and config.OPENAI_API_KEY:
+        return _transcribe_openai(audio)
+    m = _get_model()
+    segs, _ = m.transcribe(audio, language="en", beam_size=5)
+    return " ".join(seg.text.strip() for seg in segs).strip()
+
+
+def _transcribe_openai(audio: np.ndarray) -> str:
+    import os as _os
+    import tempfile
+    import wave
+    from openai import OpenAI
+
+    audio_int16 = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.close()
+    try:
+        with wave.open(tmp.name, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(config.SAMPLE_RATE)
+            wf.writeframes(audio_int16.tobytes())
+        oai = OpenAI(api_key=config.OPENAI_API_KEY)
+        with open(tmp.name, "rb") as f:
+            transcript = oai.audio.transcriptions.create(model="whisper-1", file=f, language="en")
+        return transcript.text.strip()
+    finally:
+        _os.unlink(tmp.name)
+
+
 def _get_model():
     global _model
     if _model is None:
@@ -66,9 +98,7 @@ def listen() -> str:
         return ""
 
     audio = np.concatenate(recording, axis=0).flatten()
-    model = _get_model()
-    segments, _ = model.transcribe(audio, language="en", beam_size=5)
-    text = " ".join(seg.text.strip() for seg in segments).strip()
+    text = _transcribe(audio)
     print(f"[STT] Heard: {text!r}")
     return text
 
@@ -184,8 +214,7 @@ def listen_streaming(
 
     # Final clean transcription with higher beam size
     audio = np.concatenate(recording, axis=0).flatten()
-    segments, _ = model.transcribe(audio, language="en", beam_size=5)
-    text = " ".join(seg.text.strip() for seg in segments).strip() or last_partial
+    text = _transcribe(audio) or last_partial
     print(f"[STT] Final: {text!r}")
     if on_final:
         try:

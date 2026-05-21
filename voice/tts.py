@@ -37,7 +37,9 @@ def speak(text: str, interruptible: bool = True) -> bool:
         )
 
         try:
-            if config.TTS_ENGINE == "elevenlabs" and config.ELEVENLABS_API_KEY:
+            if config.TTS_ENGINE == "openai" and config.OPENAI_API_KEY:
+                _speak_openai(text)
+            elif config.TTS_ENGINE == "elevenlabs" and config.ELEVENLABS_API_KEY:
                 _speak_elevenlabs(text)
             else:
                 _speak_pyttsx3(text)
@@ -56,6 +58,25 @@ def _speak_pyttsx3(text: str) -> None:
     engine = _get_pyttsx3()
     engine.say(text)
     engine.runAndWait()
+
+
+def _speak_openai(text: str) -> None:
+    import subprocess
+    from openai import OpenAI
+    client = OpenAI(api_key=config.OPENAI_API_KEY)
+    resp = client.audio.speech.create(
+        model="tts-1",
+        voice=config.OPENAI_TTS_VOICE,
+        input=text,
+    )
+    audio = resp.content
+    proc = subprocess.run(
+        ["ffplay", "-nodisp", "-autoexit", "-"],
+        input=audio,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        _speak_pyttsx3(text)
 
 
 def _speak_elevenlabs(text: str) -> None:
