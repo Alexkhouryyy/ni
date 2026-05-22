@@ -581,6 +581,11 @@ async def council_endpoint(request: Request):
             {"type": "council_answer", "round": round_no, "label": label, "text": text}
         )
 
+    def _round_start(round_no, labels):
+        ws_manager.broadcast_threadsafe(
+            {"type": "council_round_start", "round": round_no, "members": labels}
+        )
+
     loop = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
@@ -588,6 +593,7 @@ async def council_endpoint(request: Request):
             lambda: council.convene(
                 question, rounds=rounds, panel=panel, preset=preset,
                 on_progress=_progress, on_answer=_answer,
+                on_round_start=_round_start,
             ),
         )
     except Exception as e:
@@ -599,6 +605,9 @@ async def council_endpoint(request: Request):
         "members": result.members,
         "final_answer": result.final_answer,
         "transcript": result.transcript,
+        "confidence": result.confidence,
+        "confidence_note": result.confidence_note,
+        "disagreement": result.disagreement,
     }
     ws_manager.broadcast_threadsafe({"type": "council_done", **payload})
     return {"ok": True, **payload}

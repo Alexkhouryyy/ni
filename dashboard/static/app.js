@@ -120,10 +120,11 @@ function connectWS() {
     if (msg.type === 'chat_token') _chatAppendToken(msg.delta, msg.chat_id);
     if (msg.type === 'chat_done')  _chatFinalize(msg.chat_id, msg.response);
     if (msg.type === 'chat_error') _chatError(msg.error, msg.chat_id);
-    if (msg.type === 'council_progress') _councilProgress(msg.message);
-    if (msg.type === 'council_answer')   _councilAnswer(msg);
-    if (msg.type === 'council_done')     _councilDone(msg);
-    if (msg.type === 'council_error')    _councilError(msg.error);
+    if (msg.type === 'council_progress')    _councilProgress(msg.message);
+    if (msg.type === 'council_round_start') _councilRoundStart(msg.round, msg.members);
+    if (msg.type === 'council_answer')      _councilAnswer(msg);
+    if (msg.type === 'council_done')        _councilDone(msg);
+    if (msg.type === 'council_error')       _councilError(msg.error);
   };
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 25000);
 }
@@ -963,6 +964,7 @@ async function sendChat() {
   currentAgentText = '';
   currentAgentBubble = _appendChatMsg('agent', '');
   currentAgentBubble.classList.add('streaming');
+  currentAgentBubble.dataset.prompt = text;
   sendBtn.disabled = true;
 
   // Generate chat_id client-side so WS tokens are routed before POST returns
@@ -990,7 +992,18 @@ function _chatAppendToken(delta, chatId) {
 
 function _chatFinalize(chatId, response) {
   if (activeChatId !== chatId) return;
-  if (currentAgentBubble) currentAgentBubble.classList.remove('streaming');
+  if (currentAgentBubble) {
+    currentAgentBubble.classList.remove('streaming');
+    if (currentAgentBubble.dataset.prompt) {
+      const footer = document.createElement('div');
+      footer.className = 'chat-msg-footer';
+      footer.innerHTML =
+        '<button type="button" class="chat-second-opinion-btn" ' +
+        'title="Send the original question to the council">' +
+        '<span class="cso-icon">⚖</span> Second opinion</button>';
+      currentAgentBubble.appendChild(footer);
+    }
+  }
   const spoken = response || currentAgentText;
   currentAgentBubble = null;
   activeChatId = null;
@@ -998,6 +1011,19 @@ function _chatFinalize(chatId, response) {
   if (sendBtn) sendBtn.disabled = false;
   if (spoken) speakText(spoken);
 }
+
+// One delegated handler covers every chat bubble — historical and new.
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.chat-second-opinion-btn');
+  if (!btn) return;
+  const bubble = btn.closest('.chat-msg');
+  const prompt = bubble?.dataset.prompt;
+  if (!prompt) return;
+  document.querySelector('.nav-btn[data-tab="council"]')?.click();
+  const q = document.getElementById('council-question');
+  if (q) q.value = prompt;
+  runCouncil();
+});
 
 function _chatError(error, chatId) {
   if (activeChatId !== chatId) return;
@@ -1182,15 +1208,37 @@ function _councilRoundGroup(r) {
   return group;
 }
 
+function _councilEntry(group, label) {
+  const sel = `.council-entry[data-label="${CSS.escape(label)}"]`;
+  let entry = group.querySelector(sel);
+  if (!entry) {
+    entry = document.createElement('div');
+    entry.className = 'council-entry';
+    entry.dataset.label = label;
+    entry.innerHTML =
+      `<div class="council-entry-head">${escapeHTML(label)}` +
+      `<span class="council-pill thinking">thinking…</span></div>` +
+      `<div class="council-entry-body"></div>`;
+    group.querySelector('.cards').appendChild(entry);
+  }
+  return entry;
+}
+
+function _councilRoundStart(round, members) {
+  const group = _councilRoundGroup(round);
+  if (!group) return;
+  (members || []).forEach(label => _councilEntry(group, label));
+}
+
 function _councilAnswer(data) {
   const group = _councilRoundGroup(data.round);
   if (!group) return;
-  const entry = document.createElement('div');
-  entry.className = 'council-entry';
-  entry.innerHTML =
-    `<div class="council-entry-head">${escapeHTML(data.label)}</div>` +
-    `<div class="council-entry-body">${escapeHTML(data.text)}</div>`;
-  group.querySelector('.cards').appendChild(entry);
+  const entry = _councilEntry(group, data.label);
+  const pill = entry.querySelector('.council-pill');
+  if (pill) pill.remove();
+  const body = entry.querySelector('.council-entry-body');
+  if (body) body.textContent = data.text;
+  entry.classList.add('council-entry-done');
 }
 
 function _councilDone(data) {
@@ -1202,15 +1250,33 @@ function _councilDone(data) {
   const transcript = document.getElementById('council-transcript');
 
   if (verdict) {
+    const conf = (data.confidence || '').toLowerCase();
+    const confNote = data.confidence_note ? ` — ${escapeHTML(data.confidence_note)}` : '';
+    const confBadge = conf
+      ? `<span class="council-confidence ${conf}">Confidence: ${conf}${confNote}</span>`
+      : '';
+    const dis = (data.disagreement || '').trim();
+    const disagreed = dis && dis.toLowerCase() !== 'the council agreed';
+    const disBlock = disagreed
+      ? `<div class="council-disagreement"><div class="council-disagreement-head">Where the council split</div><div class="council-disagreement-body">${escapeHTML(dis)}</div></div>`
+      : '';
     verdict.innerHTML =
-      `<div class="council-verdict-head">Verdict <span class="council-members">${(data.members || []).join(' · ')}</span></div>` +
-      `<div class="council-verdict-body">${escapeHTML(data.final_answer || '')}</div>`;
+      `<div class="council-verdict-head">Verdict <span class="council-members">${(data.members || []).map(escapeHTML).join(' · ')}</span>${confBadge}</div>` +
+      `<div class="council-verdict-body">${escapeHTML(data.final_answer || '')}</div>` +
+      disBlock;
   }
   // Transcript is normally built live from council_answer events. Only rebuild
   // it here if those events never arrived (POST-only fallback).
   if (transcript && !transcript.children.length) {
     (data.transcript || []).forEach(e => _councilAnswer(e));
   }
+  // Any cards still showing "thinking…" failed silently — mark them so the
+  // pill stops pulsing forever.
+  document.querySelectorAll('.council-entry .council-pill.thinking').forEach(p => {
+    p.classList.remove('thinking');
+    p.classList.add('skipped');
+    p.textContent = 'no response';
+  });
 }
 
 function _councilError(err) {

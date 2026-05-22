@@ -12,6 +12,7 @@ an `on_answer` callback to stream the debate live as each member responds.
 """
 from __future__ import annotations
 import concurrent.futures
+import re
 from dataclasses import dataclass, field
 
 import config
@@ -93,6 +94,48 @@ class CouncilResult:
     final_answer: str
     transcript: list[dict] = field(default_factory=list)  # [{round, label, text}]
     members: list[str] = field(default_factory=list)
+    confidence: str | None = None        # "high" | "medium" | "low"
+    confidence_note: str | None = None   # the short reason after the dash
+    disagreement: str | None = None      # the council-split text, or "the council agreed"
+
+
+_CONFIDENCE_RE = re.compile(
+    r"^\s*\**\s*Confidence\s*\**\s*:\s*\**\s*(high|medium|low)\b"
+    r"(?:\s*[—–\-:]\s*(.+?))?\s*\**\s*$",
+    re.IGNORECASE,
+)
+_SPLIT_RE = re.compile(
+    r"^\s*\**\s*Where the council (?:split|agreed)\s*\**\s*:\s*(.+?)\s*\**\s*$",
+    re.IGNORECASE,
+)
+
+
+def _parse_verdict(text: str) -> tuple[str, str | None, str | None, str | None]:
+    """Pull `Confidence:` and `Where the council split:` lines out of the chair
+    output. Returns (clean_answer, confidence, confidence_note, disagreement).
+
+    The chair is prompted to end with these two lines, but it's an LLM — if
+    either line is missing, the corresponding field is None and the answer
+    text is returned with whatever lines remain.
+    """
+    confidence: str | None = None
+    confidence_note: str | None = None
+    disagreement: str | None = None
+    kept: list[str] = []
+    for line in text.splitlines():
+        m = _CONFIDENCE_RE.match(line)
+        if m:
+            confidence = m.group(1).lower()
+            note = (m.group(2) or "").strip().rstrip(".") or None
+            confidence_note = note
+            continue
+        m = _SPLIT_RE.match(line)
+        if m:
+            disagreement = m.group(1).strip().strip('"').strip("'")
+            continue
+        kept.append(line)
+    clean = "\n".join(kept).rstrip()
+    return clean, confidence, confidence_note, disagreement
 
 
 def roster() -> list[dict]:
@@ -161,13 +204,16 @@ def _format_answers(answers: dict) -> str:
 
 
 def convene(question: str, rounds: int = 1, panel: list[str] | None = None,
-            preset: str = "general", on_progress=None, on_answer=None) -> CouncilResult:
+            preset: str = "general", on_progress=None, on_answer=None,
+            on_round_start=None) -> CouncilResult:
     """Run the council.
 
     rounds  — number of debate rounds after the opening.
     panel   — optional list of model ids to limit the council to.
     preset  — one of _PRESETS; tailors the framing of the debate.
     on_answer(round, label, text) — called as each member responds (live).
+    on_round_start(round, labels) — called just before each round begins, so
+        the dashboard can pre-render skeleton cards with status pills.
     """
     members = available_members()
     if panel:
@@ -185,6 +231,7 @@ def convene(question: str, rounds: int = 1, panel: list[str] | None = None,
     pre = _PRESETS.get(preset) or _PRESETS["general"]
     opening_sys = _OPENING_SYS + pre["opening"]
     chair_sys = _CHAIR_SYS + pre["chair"]
+    member_labels = [label for _, label in members]
 
     def _progress(msg: str):
         if on_progress:
@@ -193,10 +240,18 @@ def convene(question: str, rounds: int = 1, panel: list[str] | None = None,
             except Exception:
                 pass
 
+    def _round_start(round_no: int):
+        if on_round_start:
+            try:
+                on_round_start(round_no, list(member_labels))
+            except Exception:
+                pass
+
     transcript: list[dict] = []
 
     # Round 0 — opening statements
     _progress(f"Opening round — {len(members)} members answering in parallel...")
+    _round_start(0)
     answers = _ask_all(
         members,
         sys_for=lambda _l: opening_sys,
@@ -210,6 +265,7 @@ def convene(question: str, rounds: int = 1, panel: list[str] | None = None,
     # Debate rounds
     for r in range(1, max(0, rounds) + 1):
         _progress(f"Debate round {r} — members critiquing and revising...")
+        _round_start(r)
         debate_user = (
             f"QUESTION:\n{question}\n\n"
             f"ANSWERS SO FAR:\n{_format_answers(answers)}\n\n"
@@ -237,9 +293,14 @@ def convene(question: str, rounds: int = 1, panel: list[str] | None = None,
     except Exception as e:
         final = f"[Chair synthesis failed: {e}]"
 
+    clean, confidence, confidence_note, disagreement = _parse_verdict(final)
+
     return CouncilResult(
         question=question,
-        final_answer=final,
+        final_answer=clean,
         transcript=transcript,
-        members=[label for _, label in members],
+        members=member_labels,
+        confidence=confidence,
+        confidence_note=confidence_note,
+        disagreement=disagreement,
     )
