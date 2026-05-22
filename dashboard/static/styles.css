@@ -850,3 +850,37 @@ pre { font-family: 'SF Mono', Menlo, monospace; }
   word-break: break-word;
   color: var(--text-mute);
 }
+
+.council-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 2px;
+}
+.council-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.council-pick.disabled { color: var(--text-dim); cursor: not-allowed; }
+.council-pick input { cursor: inherit; }
+.council-round { margin-bottom: 4px; }
+
+.chat-council-btn {
+  flex-shrink: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--accent-2);
+  font-size: 17px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+.chat-council-btn:hover { border-color: var(--accent-2); }

@@ -338,6 +338,7 @@
       <form id="chat-form" class="chat-form" onsubmit="return false">
         <button type="button" id="chat-mic" class="chat-mic-btn" title="Tap to speak">🎙</button>
         <textarea id="chat-input" class="chat-input" placeholder="Type a message… (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
+        <button type="button" id="chat-council" class="chat-council-btn" title="Send this question to the council">⚖</button>
         <button id="chat-send" class="chat-send-btn">Send</button>
       </form>
     </div>
@@ -351,12 +352,17 @@
     </header>
     <form id="council-form" class="add-form vertical">
       <textarea id="council-question" placeholder="Ask the council a hard question…" rows="3" required></textarea>
+      <div id="council-panel" class="council-panel"></div>
       <div class="council-controls">
+        <label class="chat-tool-field">Mode
+          <select id="council-preset"></select>
+        </label>
         <label class="chat-tool-field">Debate rounds
           <select id="council-rounds">
             <option value="0">0 — opening only</option>
             <option value="1" selected>1 — recommended</option>
             <option value="2">2 — deeper</option>
+            <option value="3">3 — exhaustive</option>
           </select>
         </label>
         <button type="submit" id="council-convene" class="primary-btn">Convene council</button>

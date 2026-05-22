@@ -484,11 +484,19 @@ async def chat_endpoint(request: Request):
 
 
 # --- Council: Claude / GPT / Gemini debate ---
+@app.get("/api/council/roster")
+async def council_roster():
+    from agent import council
+    return {"roster": council.roster(), "presets": council.preset_names()}
+
+
 @app.post("/api/council")
 async def council_endpoint(request: Request):
     body = await request.json()
     question = (body.get("question") or "").strip()
     rounds = max(0, min(3, int(body.get("rounds", 1))))
+    panel = body.get("panel") or None
+    preset = body.get("preset") or "general"
     if not question:
         return JSONResponse({"error": "empty question"}, status_code=400)
 
@@ -497,10 +505,19 @@ async def council_endpoint(request: Request):
     def _progress(msg: str):
         ws_manager.broadcast_threadsafe({"type": "council_progress", "message": msg})
 
+    def _answer(round_no, label, text):
+        ws_manager.broadcast_threadsafe(
+            {"type": "council_answer", "round": round_no, "label": label, "text": text}
+        )
+
     loop = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
-            None, lambda: council.convene(question, rounds=rounds, on_progress=_progress)
+            None,
+            lambda: council.convene(
+                question, rounds=rounds, panel=panel, preset=preset,
+                on_progress=_progress, on_answer=_answer,
+            ),
         )
     except Exception as e:
         ws_manager.broadcast_threadsafe({"type": "council_error", "error": str(e)})

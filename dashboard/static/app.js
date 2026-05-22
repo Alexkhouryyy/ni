@@ -74,6 +74,7 @@ function connectWS() {
     if (msg.type === 'chat_done')  _chatFinalize(msg.chat_id, msg.response);
     if (msg.type === 'chat_error') _chatError(msg.error, msg.chat_id);
     if (msg.type === 'council_progress') _councilProgress(msg.message);
+    if (msg.type === 'council_answer')   _councilAnswer(msg);
     if (msg.type === 'council_done')     _councilDone(msg);
     if (msg.type === 'council_error')    _councilError(msg.error);
   };
@@ -773,6 +774,14 @@ function loadChat() {
     input.style.height = Math.min(input.scrollHeight, 200) + 'px';
   });
   document.getElementById('chat-mic')?.addEventListener('click', toggleMic);
+  document.getElementById('chat-council')?.addEventListener('click', () => {
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    document.querySelector('.nav-btn[data-tab="council"]')?.click();
+    const q = document.getElementById('council-question');
+    if (q) q.value = text;
+    runCouncil();
+  });
 }
 
 // ============== MODEL PICKER ==============
@@ -968,11 +977,27 @@ async function speakOpenAI(text) {
 // ============== COUNCIL ==============
 let councilRunning = false;
 
-function loadCouncil() {
+async function loadCouncil() {
   const form = document.getElementById('council-form');
   if (!form || form._wired) return;
   form._wired = true;
   form.addEventListener('submit', e => { e.preventDefault(); runCouncil(); });
+  try {
+    const data = await api('/api/council/roster');
+    const panel = document.getElementById('council-panel');
+    if (panel) {
+      panel.innerHTML = (data.roster || []).map(m =>
+        `<label class="council-pick${m.available ? '' : ' disabled'}">` +
+        `<input type="checkbox" value="${escapeHTML(m.model)}" ${m.available ? 'checked' : 'disabled'}>` +
+        `<span>${escapeHTML(m.label)}${m.available ? '' : ' · no API key'}</span></label>`
+      ).join('');
+    }
+    const preset = document.getElementById('council-preset');
+    if (preset) {
+      preset.innerHTML = (data.presets || []).map(p =>
+        `<option value="${escapeHTML(p.id)}">${escapeHTML(p.label)}</option>`).join('');
+    }
+  } catch (e) { /* roster fetch failed — council still works with backend defaults */ }
 }
 
 async function runCouncil() {
@@ -980,6 +1005,14 @@ async function runCouncil() {
   const q = document.getElementById('council-question').value.trim();
   if (!q) return;
   const rounds = parseInt(document.getElementById('council-rounds').value, 10);
+  const presetEl = document.getElementById('council-preset');
+  const preset = presetEl ? presetEl.value : 'general';
+  const picks = Array.from(document.querySelectorAll('#council-panel input'));
+  const panel = picks.filter(c => c.checked).map(c => c.value);
+  if (picks.length && panel.length < 2) {
+    _councilError('Pick at least 2 members for the council.');
+    return;
+  }
   const btn = document.getElementById('council-convene');
   const progress = document.getElementById('council-progress');
   const verdict = document.getElementById('council-verdict');
@@ -992,8 +1025,10 @@ async function runCouncil() {
   transcript.innerHTML = '';
   progress.innerHTML = '<div class="council-step">Convening the council…</div>';
 
+  const body = { question: q, rounds, preset };
+  if (panel.length) body.panel = panel;
   try {
-    const result = await api('/api/council', { method: 'POST', body: { question: q, rounds } });
+    const result = await api('/api/council', { method: 'POST', body });
     if (councilRunning) _councilDone(result);  // fallback if the WS event didn't arrive
   } catch (e) {
     _councilError('Request failed: ' + e.message);
@@ -1010,6 +1045,37 @@ function _councilProgress(msg) {
   }
 }
 
+function _councilRoundGroup(r) {
+  const transcript = document.getElementById('council-transcript');
+  if (!transcript) return null;
+  let group = transcript.querySelector(`.council-round[data-round="${r}"]`);
+  if (!group) {
+    group = document.createElement('div');
+    group.className = 'council-round';
+    group.dataset.round = r;
+    const label = document.createElement('div');
+    label.className = 'council-round-label';
+    label.textContent = r === 0 ? 'Opening statements' : `Debate round ${r}`;
+    const cards = document.createElement('div');
+    cards.className = 'cards';
+    group.appendChild(label);
+    group.appendChild(cards);
+    transcript.appendChild(group);
+  }
+  return group;
+}
+
+function _councilAnswer(data) {
+  const group = _councilRoundGroup(data.round);
+  if (!group) return;
+  const entry = document.createElement('div');
+  entry.className = 'council-entry';
+  entry.innerHTML =
+    `<div class="council-entry-head">${escapeHTML(data.label)}</div>` +
+    `<div class="council-entry-body">${escapeHTML(data.text)}</div>`;
+  group.querySelector('.cards').appendChild(entry);
+}
+
 function _councilDone(data) {
   if (!councilRunning) return;  // already rendered (WS + POST both fired)
   councilRunning = false;
@@ -1023,22 +1089,10 @@ function _councilDone(data) {
       `<div class="council-verdict-head">Verdict <span class="council-members">${(data.members || []).join(' · ')}</span></div>` +
       `<div class="council-verdict-body">${escapeHTML(data.final_answer || '')}</div>`;
   }
-  if (transcript) {
-    const rounds = {};
-    (data.transcript || []).forEach(e => {
-      (rounds[e.round] = rounds[e.round] || []).push(e);
-    });
-    let html = '';
-    Object.keys(rounds).sort((a, b) => a - b).forEach(r => {
-      const label = r === '0' ? 'Opening statements' : `Debate round ${r}`;
-      html += `<div class="council-round-label">${label}</div><div class="cards">`;
-      rounds[r].forEach(e => {
-        html += `<div class="council-entry"><div class="council-entry-head">${escapeHTML(e.label)}</div>` +
-                `<div class="council-entry-body">${escapeHTML(e.text)}</div></div>`;
-      });
-      html += '</div>';
-    });
-    transcript.innerHTML = html;
+  // Transcript is normally built live from council_answer events. Only rebuild
+  // it here if those events never arrived (POST-only fallback).
+  if (transcript && !transcript.children.length) {
+    (data.transcript || []).forEach(e => _councilAnswer(e));
   }
 }
 

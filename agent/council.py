@@ -7,7 +7,8 @@ Flow:
   3. Synthesis — a chair model consolidates the debate into one best answer.
 
 Members are included only when their provider has an API key configured, so
-the council degrades gracefully (minimum 2 members required).
+the council degrades gracefully (minimum 2 members required). Callers may pass
+an `on_answer` callback to stream the debate live as each member responds.
 """
 from __future__ import annotations
 import concurrent.futures
@@ -44,10 +45,46 @@ _DEBATE_SYS = (
 _CHAIR_SYS = (
     "You are the chair of an expert council. The members debated a question. "
     "Read the full transcript and write the single best possible answer. "
-    "Integrate the strongest points from every member. Where the council "
-    "disagreed and it matters, say so briefly and give your ruling with reasons. "
-    "Output only the final answer — clear and decisive."
+    "Integrate the strongest points from every member. "
+    "Output the final answer first — clear and decisive. Then add two short "
+    "lines, exactly in this form:\n"
+    "Confidence: high|medium|low — a few words on why.\n"
+    "Where the council split: the key disagreement and your ruling, or "
+    "\"the council agreed\" if there was none."
 )
+
+# Presets tailor the council's framing to a kind of question. Each preset adds
+# an instruction fragment to the opening prompt and to the chair prompt.
+_PRESETS = {
+    "general": {"label": "General", "opening": "", "chair": ""},
+    "decision": {
+        "label": "Decision",
+        "opening": (
+            " This is a decision. Weigh the concrete options, name the "
+            "trade-offs, and commit to a clear recommendation."
+        ),
+        "chair": " End with a one-line recommendation the reader can act on.",
+    },
+    "code-review": {
+        "label": "Code review",
+        "opening": (
+            " This is a code review. Hunt for bugs, edge cases, security "
+            "issues, and unclear logic. Quote the specific lines you mean."
+        ),
+        "chair": " Group the final answer into Must-fix, Should-fix, and Nits.",
+    },
+    "fact-check": {
+        "label": "Fact-check",
+        "opening": (
+            " This is a fact-check. Separate what is well-established from "
+            "what is uncertain. Flag any claim you cannot verify."
+        ),
+        "chair": (
+            " Open with a verdict — True, False, Mixed, or Unverifiable — "
+            "then the reasoning."
+        ),
+    },
+}
 
 
 @dataclass
@@ -58,22 +95,36 @@ class CouncilResult:
     members: list[str] = field(default_factory=list)
 
 
-def available_members() -> list[tuple[str, str]]:
-    """Return council members whose provider has an API key configured."""
-    members = []
+def roster() -> list[dict]:
+    """The full council roster with per-member API-key availability."""
+    out = []
     for model, label in _ROSTER:
         p = provider.provider_for(model)
-        if p == "anthropic" and config.ANTHROPIC_API_KEY:
-            members.append((model, label))
-        elif p == "openai" and config.OPENAI_API_KEY:
-            members.append((model, label))
-        elif p == "gemini" and config.GEMINI_API_KEY:
-            members.append((model, label))
-    return members
+        available = (
+            (p == "anthropic" and bool(config.ANTHROPIC_API_KEY))
+            or (p == "openai" and bool(config.OPENAI_API_KEY))
+            or (p == "gemini" and bool(config.GEMINI_API_KEY))
+        )
+        out.append({"model": model, "label": label, "available": available})
+    return out
 
 
-def _ask_all(members, sys_for, user_for, max_tokens=1500) -> dict:
-    """Call every member in parallel. Returns {label: text}."""
+def available_members() -> list[tuple[str, str]]:
+    """Return council members whose provider has an API key configured."""
+    return [(m["model"], m["label"]) for m in roster() if m["available"]]
+
+
+def preset_names() -> list[dict]:
+    """Available council presets, for the UI."""
+    return [{"id": k, "label": v["label"]} for k, v in _PRESETS.items()]
+
+
+def _ask_all(members, sys_for, user_for, max_tokens=1500, round_no=0, on_answer=None) -> dict:
+    """Call every member in parallel. Returns {label: text}.
+
+    If on_answer is given, it is called as on_answer(round_no, label, text) the
+    moment each member finishes — so callers can stream the debate live.
+    """
     out: dict[str, str] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(members)) as ex:
         futs = {
@@ -83,9 +134,15 @@ def _ask_all(members, sys_for, user_for, max_tokens=1500) -> dict:
         for fut in concurrent.futures.as_completed(futs):
             label = futs[fut]
             try:
-                out[label] = fut.result()
+                text = fut.result()
             except Exception as e:
-                out[label] = f"[{label} failed to respond: {e}]"
+                text = f"[{label} failed to respond: {e}]"
+            out[label] = text
+            if on_answer:
+                try:
+                    on_answer(round_no, label, text)
+                except Exception:
+                    pass
     return out
 
 
@@ -93,18 +150,31 @@ def _format_answers(answers: dict) -> str:
     return "\n\n".join(f"--- {label} ---\n{text}" for label, text in answers.items())
 
 
-def convene(question: str, rounds: int = 1, on_progress=None) -> CouncilResult:
-    """Run the council. `rounds` = number of debate rounds after the opening."""
+def convene(question: str, rounds: int = 1, panel: list[str] | None = None,
+            preset: str = "general", on_progress=None, on_answer=None) -> CouncilResult:
+    """Run the council.
+
+    rounds  — number of debate rounds after the opening.
+    panel   — optional list of model ids to limit the council to.
+    preset  — one of _PRESETS; tailors the framing of the debate.
+    on_answer(round, label, text) — called as each member responds (live).
+    """
     members = available_members()
+    if panel:
+        members = [(m, l) for (m, l) in members if m in panel]
     if len(members) < 2:
         return CouncilResult(
             question=question,
             final_answer=(
-                "The council needs at least 2 providers with API keys configured. "
-                "Add OPENAI_API_KEY and/or GEMINI_API_KEY to .env."
+                "The council needs at least 2 members with API keys configured. "
+                "Add OPENAI_API_KEY and/or GEMINI_API_KEY to .env, or widen the panel."
             ),
             members=[label for _, label in members],
         )
+
+    pre = _PRESETS.get(preset) or _PRESETS["general"]
+    opening_sys = _OPENING_SYS + pre["opening"]
+    chair_sys = _CHAIR_SYS + pre["chair"]
 
     def _progress(msg: str):
         if on_progress:
@@ -117,7 +187,13 @@ def convene(question: str, rounds: int = 1, on_progress=None) -> CouncilResult:
 
     # Round 0 — opening statements
     _progress(f"Opening round — {len(members)} members answering in parallel...")
-    answers = _ask_all(members, sys_for=lambda _l: _OPENING_SYS, user_for=lambda _l: question)
+    answers = _ask_all(
+        members,
+        sys_for=lambda _l: opening_sys,
+        user_for=lambda _l: question,
+        round_no=0,
+        on_answer=on_answer,
+    )
     for label, text in answers.items():
         transcript.append({"round": 0, "label": label, "text": text})
 
@@ -133,6 +209,8 @@ def convene(question: str, rounds: int = 1, on_progress=None) -> CouncilResult:
             members,
             sys_for=lambda label: _DEBATE_SYS.format(label=label),
             user_for=lambda _l: debate_user,
+            round_no=r,
+            on_answer=on_answer,
         )
         for label, text in answers.items():
             transcript.append({"round": r, "label": label, "text": text})
@@ -145,7 +223,7 @@ def convene(question: str, rounds: int = 1, on_progress=None) -> CouncilResult:
         blocks.append(f"=== {entry['label']} ({tag}) ===\n{entry['text']}")
     chair_user = f"QUESTION:\n{question}\n\nCOUNCIL TRANSCRIPT:\n\n" + "\n\n".join(blocks)
     try:
-        final = provider.complete(_CHAIR, _CHAIR_SYS, chair_user, max_tokens=2000)
+        final = provider.complete(_CHAIR, chair_sys, chair_user, max_tokens=2000)
     except Exception as e:
         final = f"[Chair synthesis failed: {e}]"
 
