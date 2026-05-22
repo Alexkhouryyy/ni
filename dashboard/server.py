@@ -129,8 +129,6 @@ async def _auth(request: Request, call_next):
     auth = request.headers.get("Authorization", "")
     if auth == f"Bearer {token}":
         return await call_next(request)
-    if path == "/ws/live" and request.query_params.get("token") == token:
-        return await call_next(request)
     return Response("Unauthorized", status_code=401)
 
 
@@ -655,6 +653,12 @@ async def speak_endpoint(request: Request):
 # --- WebSocket live stream ---
 @app.websocket("/ws/live")
 async def ws_live(ws: WebSocket):
+    # HTTP middleware does not run for WebSocket upgrades, so the dashboard
+    # token must be checked here against the ?token= query parameter.
+    token = config.DASHBOARD_TOKEN
+    if token and ws.query_params.get("token") != token:
+        await ws.close(code=1008)  # 1008 = policy violation
+        return
     await ws_manager.connect(ws)
     if ws_manager.loop is None:
         ws_manager.loop = asyncio.get_event_loop()
