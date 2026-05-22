@@ -96,14 +96,24 @@ class CouncilResult:
 
 
 def roster() -> list[dict]:
-    """The full council roster with per-member API-key availability."""
+    """The full council roster with per-member API-key availability.
+
+    If OLLAMA_COUNCIL_MODEL is set (e.g. ollama/llama3.1), that local model is
+    appended as a fourth member; it is available when OLLAMA_BASE_URL is set.
+    """
+    entries = list(_ROSTER)
+    ollama_model = config.OLLAMA_COUNCIL_MODEL or ""
+    if ollama_model:
+        entries.append((ollama_model, "Ollama"))
+
     out = []
-    for model, label in _ROSTER:
+    for model, label in entries:
         p = provider.provider_for(model)
         available = (
             (p == "anthropic" and bool(config.ANTHROPIC_API_KEY))
             or (p == "openai" and bool(config.OPENAI_API_KEY))
             or (p == "gemini" and bool(config.GEMINI_API_KEY))
+            or (p == "ollama" and bool(config.OLLAMA_BASE_URL))
         )
         out.append({"model": model, "label": label, "available": available})
     return out

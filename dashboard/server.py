@@ -165,6 +165,7 @@ def list_models():
         "anthropic": bool(config.ANTHROPIC_API_KEY),
         "openai": bool(config.OPENAI_API_KEY),
         "gemini": bool(config.GEMINI_API_KEY),
+        "ollama": bool(config.OLLAMA_BASE_URL),
     }
     models = [
         {"model": m, "provider": provider_for(m), "available": have_key.get(provider_for(m), False)}

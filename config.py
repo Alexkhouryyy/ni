@@ -116,6 +116,7 @@ MODEL_PRICING = {
     "gemini-2.5-pro":            {"input": 1.25,  "output": 10.0,  "cache_read": 0.31, "cache_create": 0.0},
     "gemini-2.5-flash":          {"input": 0.30,  "output": 2.50,  "cache_read": 0.075,"cache_create": 0.0},
     "gemini-2.0-flash":          {"input": 0.10,  "output": 0.40,  "cache_read": 0.025,"cache_create": 0.0},
+    # Ollama local models: any ollama/* model not listed here defaults to $0 (see telemetry._pricing).
 }
 
 # Reflection
@@ -143,3 +144,9 @@ WHATSAPP_ALLOWED_NUMBERS = [n.strip() for n in os.getenv("WHATSAPP_ALLOWED_NUMBE
 SIGNAL_CLI_URL = os.getenv("SIGNAL_CLI_URL", "")
 SIGNAL_PHONE_NUMBER = os.getenv("SIGNAL_PHONE_NUMBER", "")
 SIGNAL_ALLOWED_NUMBERS = [n.strip() for n in os.getenv("SIGNAL_ALLOWED_NUMBERS", "").split(",") if n.strip()]
+
+# Ollama local models — point at a local or remote ollama instance.
+# Use model names like ollama/llama3.2, ollama/mistral, ollama/qwen2.5, etc.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+# To add a local model to the council, set this to e.g. ollama/llama3.1
+OLLAMA_COUNCIL_MODEL = os.getenv("OLLAMA_COUNCIL_MODEL", "")

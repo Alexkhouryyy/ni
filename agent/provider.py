@@ -13,11 +13,13 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 def provider_for(model: str) -> str:
-    """Return 'anthropic', 'openai', or 'gemini' based on model name."""
+    """Return 'anthropic', 'openai', 'gemini', or 'ollama' based on model name."""
     if model.startswith("claude"):
         return "anthropic"
     if model.startswith("gemini"):
         return "gemini"
+    if model.startswith("ollama/"):
+        return "ollama"
     return "openai"
 
 
@@ -34,6 +36,13 @@ KNOWN_MODELS = {
     # Google Gemini
     "gemini-2.5-pro", "gemini-2.5-flash",
     "gemini-2.0-flash",
+    # Ollama local — any model pulled with `ollama pull <name>`; use ollama/ prefix.
+    # These are the most common; any other pulled model works the same way.
+    "ollama/llama3.2", "ollama/llama3.1", "ollama/llama3",
+    "ollama/mistral", "ollama/mistral-nemo",
+    "ollama/qwen2.5", "ollama/qwen2.5-coder",
+    "ollama/phi4", "ollama/gemma3",
+    "ollama/deepseek-r1",
 }
 
 
@@ -361,27 +370,34 @@ class _OpenAIStream:
 # ── Adapter ───────────────────────────────────────────────────────────────────
 
 class _Messages:
-    def __init__(self, oai_client):
+    def __init__(self, oai_client, strip_prefix: str = ""):
         self._oai = oai_client
+        self._strip = strip_prefix
+
+    def _prep(self, kwargs: dict) -> dict:
+        kw = _translate_kwargs(kwargs)
+        if self._strip and kw.get("model", "").startswith(self._strip):
+            kw["model"] = kw["model"][len(self._strip):]
+        return kw
 
     def create(self, **kwargs) -> _FakeMessage:
-        return _wrap_response(self._oai.chat.completions.create(**_translate_kwargs(kwargs)))
+        return _wrap_response(self._oai.chat.completions.create(**self._prep(kwargs)))
 
     def stream(self, **kwargs) -> _OpenAIStream:
-        return _OpenAIStream(self._oai, _translate_kwargs(kwargs))
+        return _OpenAIStream(self._oai, self._prep(kwargs))
 
 
 class OpenAIAdapter:
     """Drop-in replacement for anthropic.Anthropic() inside AgentCore.
 
-    Works for both OpenAI and Google Gemini — Gemini exposes an
-    OpenAI-compatible endpoint, so only the base_url and key differ.
+    Works for OpenAI, Google Gemini, and Ollama — all expose an
+    OpenAI-compatible endpoint; only base_url, key, and optional prefix differ.
     """
 
-    def __init__(self, api_key: str, base_url: str | None = None):
+    def __init__(self, api_key: str, base_url: str | None = None, strip_prefix: str = ""):
         from openai import OpenAI
         self._oai = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
-        self.messages = _Messages(self._oai)
+        self.messages = _Messages(self._oai, strip_prefix=strip_prefix)
 
 
 def get_client(model: str):
@@ -393,6 +409,10 @@ def get_client(model: str):
         return anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, max_retries=config.API_MAX_RETRIES)
     if p == "gemini":
         return OpenAIAdapter(config.GEMINI_API_KEY, base_url=GEMINI_BASE_URL)
+    if p == "ollama":
+        # Ollama exposes an OpenAI-compatible API; no real key needed.
+        # strip_prefix removes "ollama/" so the model name reaches Ollama correctly.
+        return OpenAIAdapter("ollama", base_url=config.OLLAMA_BASE_URL, strip_prefix="ollama/")
     return OpenAIAdapter(config.OPENAI_API_KEY)
 
 
