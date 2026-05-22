@@ -28,6 +28,9 @@ from agent import telemetry as tel_mod
 from tools import phone as phone_mod
 from tools import telegram as telegram_mod
 from tools import discord as discord_mod
+from tools import slack as slack_mod
+from tools import whatsapp as whatsapp_mod
+from tools import signal as signal_mod
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -104,17 +107,29 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+_WEBHOOK_PATHS = frozenset({
+    "/telegram/webhook", "/discord/interactions",
+    "/twilio/sms", "/twilio/voice", "/twilio/whatsapp",
+    "/slack/events", "/signal/webhook",
+})
+
+
 @app.middleware("http")
 async def _auth(request: Request, call_next):
     token = config.DASHBOARD_TOKEN
     if not token:
         return await call_next(request)
-    if request.url.path == "/health":
+    path = request.url.path
+    # Allow the SPA shell + static assets so the login overlay can load.
+    if path == "/" or path.startswith("/static/") or path == "/health":
+        return await call_next(request)
+    # Inbound webhooks carry per-service auth; don't block them here.
+    if path in _WEBHOOK_PATHS:
         return await call_next(request)
     auth = request.headers.get("Authorization", "")
     if auth == f"Bearer {token}":
         return await call_next(request)
-    if request.url.path == "/ws/live" and request.query_params.get("token") == token:
+    if path == "/ws/live" and request.query_params.get("token") == token:
         return await call_next(request)
     return Response("Unauthorized", status_code=401)
 
@@ -448,6 +463,63 @@ def discord_status():
     return {
         "configured": discord_mod.is_configured(),
         "allowed_user_ids": getattr(config, "DISCORD_ALLOWED_USER_IDS", []),
+    }
+
+
+@app.post("/slack/events")
+async def slack_events(request: Request):
+    body = await request.body()
+    sig = request.headers.get("X-Slack-Signature", "")
+    ts = request.headers.get("X-Slack-Request-Timestamp", "")
+    if not slack_mod.verify_signature(sig, ts, body):
+        return Response(content="invalid signature", status_code=401)
+    payload = json.loads(body)
+    result = slack_mod.dispatch_event(payload)
+    if result:
+        return JSONResponse(result)
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, lambda: slack_mod.dispatch_event(payload))
+    return {"ok": True}
+
+
+@app.get("/api/slack/status")
+def slack_status():
+    return {
+        "configured": slack_mod.is_configured(),
+        "allowed_channel_ids": getattr(config, "SLACK_ALLOWED_CHANNEL_IDS", []),
+    }
+
+
+@app.post("/twilio/whatsapp")
+async def twilio_whatsapp(request: Request):
+    form = await request.form()
+    twiml = whatsapp_mod.dispatch_inbound(dict(form))
+    return Response(content=twiml, media_type="application/xml")
+
+
+@app.get("/api/whatsapp/status")
+def whatsapp_status():
+    return {
+        "configured": whatsapp_mod.is_configured(),
+        "from_number": getattr(config, "WHATSAPP_FROM_NUMBER", ""),
+        "allowed_numbers": getattr(config, "WHATSAPP_ALLOWED_NUMBERS", []),
+    }
+
+
+@app.post("/signal/webhook")
+async def signal_webhook(request: Request):
+    payload = await request.json()
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, lambda: signal_mod.dispatch_inbound(payload))
+    return {"ok": True}
+
+
+@app.get("/api/signal/status")
+def signal_status():
+    return {
+        "configured": signal_mod.is_configured(),
+        "phone_number": getattr(config, "SIGNAL_PHONE_NUMBER", ""),
+        "allowed_numbers": getattr(config, "SIGNAL_ALLOWED_NUMBERS", []),
     }
 
 

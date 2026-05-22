@@ -1,12 +1,58 @@
 // === Apex Agent dashboard ===
 
+// === Token auth ===
+const _TOKEN_KEY = 'apex_token';
+function getToken() { return localStorage.getItem(_TOKEN_KEY) || ''; }
+function setToken(t) {
+  if (t) localStorage.setItem(_TOKEN_KEY, t);
+  else localStorage.removeItem(_TOKEN_KEY);
+}
+
+function showLogin(msg = '') {
+  const overlay = document.getElementById('login-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  const err = document.getElementById('login-error');
+  if (err) err.textContent = msg || '';
+}
+function hideLogin() {
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+document.getElementById('login-form')?.addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const t = (document.getElementById('login-token')?.value || '').trim();
+  if (!t) return;
+  const err = document.getElementById('login-error');
+  try {
+    const r = await fetch('/api/status', { headers: { 'Authorization': `Bearer ${t}` } });
+    if (r.ok) {
+      setToken(t);
+      hideLogin();
+      boot();
+    } else {
+      if (err) err.textContent = 'Wrong token.';
+    }
+  } catch (e) {
+    if (err) err.textContent = 'Connection error.';
+  }
+});
+
 // === API helper ===
 async function api(path, opts = {}) {
+  const token = getToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const r = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
+  if (r.status === 401) {
+    showLogin('Session expired — please re-enter your token.');
+    throw new Error('Unauthorized');
+  }
   if (!r.ok) throw new Error(`HTTP ${r.status}: ${path}`);
   return r.json();
 }
@@ -49,8 +95,7 @@ async function refreshStatus() {
     document.getElementById('status-uptime').textContent = `${h}h ${m}m`;
   } catch (e) {}
 }
-setInterval(refreshStatus, 5000);
-refreshStatus();
+// refreshStatus and connectWS are started by boot() after auth check.
 
 // === WebSocket live feed ===
 const wsIndicator = document.getElementById('ws-indicator');
@@ -58,7 +103,9 @@ const feed = document.getElementById('event-feed');
 let ws;
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws/live`);
+  const token = getToken();
+  const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+  ws = new WebSocket(`${proto}://${location.host}/ws/live${qs}`);
   ws.onopen = () => { wsIndicator.textContent = '● live'; wsIndicator.className = 'brand-sub ws-on'; };
   ws.onclose = () => {
     wsIndicator.textContent = '● offline'; wsIndicator.className = 'brand-sub ws-off';
@@ -93,8 +140,6 @@ function addFeedItem(msg) {
   spawnArc(msg.source);
   registerLiveEvent();
 }
-connectWS();
-
 // === Tab loaders ===
 async function loadTab(tab) {
   const fns = {
@@ -1109,5 +1154,25 @@ function _councilError(err) {
   }
 }
 
-// Boot the default view
-loadTab('overview');
+// === Boot — probe auth before starting the app ===
+let _booted = false;
+async function boot() {
+  if (_booted) return;
+  const token = getToken();
+  try {
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    const r = await fetch('/api/status', { headers });
+    if (r.status === 401) {
+      if (token) setToken('');  // stored token is no longer valid
+      showLogin(token ? 'Token invalid or changed — please re-enter.' : '');
+      return;
+    }
+  } catch (_) { /* network error — proceed anyway */ }
+  _booted = true;
+  hideLogin();
+  refreshStatus();
+  setInterval(refreshStatus, 5000);
+  connectWS();
+  loadTab('overview');
+}
+boot();

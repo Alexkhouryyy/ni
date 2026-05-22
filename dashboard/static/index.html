@@ -375,6 +375,21 @@
 
 </main>
 
+<!-- Login overlay — shown when DASHBOARD_TOKEN is set and no valid token is stored -->
+<div id="login-overlay" style="display:none">
+  <div class="login-box">
+    <div class="logo-dot login-logo"></div>
+    <div class="login-title">Apex Agent</div>
+    <div class="login-sub">Enter your dashboard token to continue</div>
+    <form id="login-form" autocomplete="off">
+      <input type="password" id="login-token" class="login-input"
+             placeholder="Dashboard token" autocomplete="current-password">
+      <button type="submit" class="primary-btn login-btn">Unlock</button>
+      <div id="login-error" class="login-error"></div>
+    </form>
+  </div>
+</div>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

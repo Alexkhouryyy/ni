@@ -884,3 +884,40 @@ pre { font-family: 'SF Mono', Menlo, monospace; }
   cursor: pointer;
 }
 .chat-council-btn:hover { border-color: var(--accent-2); }
+
+/* === Login overlay === */
+#login-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(95,216,255,0.07), transparent 70%),
+              var(--bg);
+  backdrop-filter: blur(4px);
+}
+.login-box {
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 40px 36px 32px;
+  width: 340px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+.login-logo {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 18px rgba(102,204,255,0.5);
+  margin-bottom: 8px;
+}
+.login-title { font-size: 18px; font-weight: 700; color: var(--text); }
+.login-sub { font-size: 12px; color: var(--text-mute); margin-bottom: 12px; }
+#login-form { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.login-input {
+  width: 100%; padding: 10px 14px;
+  background: var(--bg-3); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-size: 14px; outline: none;
+}
+.login-input:focus { border-color: var(--accent); }
+.login-btn { width: 100%; margin-top: 2px; }
+.login-error { font-size: 12px; color: var(--danger); min-height: 16px; text-align: center; }

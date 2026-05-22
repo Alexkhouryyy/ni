@@ -16,7 +16,7 @@ from agent import reflection
 from agent import telemetry
 from agent import resilience
 from agent import skills as skills_mod
-from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen, telegram, discord
+from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen, telegram, discord, slack, whatsapp, signal
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
 research capabilities, and a bash terminal. You are running on the user's machine and can see their screen.
@@ -770,6 +770,42 @@ TOOLS = [
             "required": ["text"],
         },
     },
+    {
+        "name": "slack_send",
+        "description": "Send a message to a Slack channel via the bot. Use proactively when the user prefers Slack.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel": {"type": "string", "description": "Slack channel ID or name (e.g. C012AB3CD or #general)."},
+                "text": {"type": "string", "description": "Message text (≤40000 chars)."},
+            },
+            "required": ["channel", "text"],
+        },
+    },
+    {
+        "name": "whatsapp_send",
+        "description": "Send a WhatsApp message via Twilio. Use proactively when the user prefers WhatsApp.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient phone number in E.164 format (e.g. +15551234567)."},
+                "text": {"type": "string", "description": "Message text (≤1600 chars)."},
+            },
+            "required": ["to", "text"],
+        },
+    },
+    {
+        "name": "signal_send",
+        "description": "Send a Signal message via signal-cli-rest-api. Use proactively when the user prefers Signal.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "recipient": {"type": "string", "description": "Recipient phone number in E.164 format (e.g. +15551234567)."},
+                "text": {"type": "string", "description": "Message text."},
+            },
+            "required": ["recipient", "text"],
+        },
+    },
     # --- Tier-4: Image generation ---
     {
         "name": "generate_image",
@@ -1122,6 +1158,12 @@ def _execute_tool(name: str, inputs: dict) -> str:
             if not channel:
                 return "[Discord] No channel_id given and DISCORD_DEFAULT_CHANNEL_ID is not set."
             return discord.send_message(channel, inputs["text"])
+        elif name == "slack_send":
+            return slack.send_message(inputs["channel"], inputs["text"])
+        elif name == "whatsapp_send":
+            return whatsapp.send_message(inputs["to"], inputs["text"])
+        elif name == "signal_send":
+            return signal.send_message(inputs["recipient"], inputs["text"])
 
         # --- Tier-4: Image generation ---
         elif name == "generate_image":

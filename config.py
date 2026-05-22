@@ -129,3 +129,17 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 DISCORD_PUBLIC_KEY = os.getenv("DISCORD_PUBLIC_KEY", "")
 DISCORD_DEFAULT_CHANNEL_ID = os.getenv("DISCORD_DEFAULT_CHANNEL_ID", "")
 DISCORD_ALLOWED_USER_IDS = [x.strip() for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()]
+
+# Slack bot
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
+SLACK_ALLOWED_CHANNEL_IDS = [x.strip() for x in os.getenv("SLACK_ALLOWED_CHANNEL_IDS", "").split(",") if x.strip()]
+
+# WhatsApp (via Twilio — reuses TWILIO_SID / TWILIO_AUTH_TOKEN)
+WHATSAPP_FROM_NUMBER = os.getenv("WHATSAPP_FROM_NUMBER", "")
+WHATSAPP_ALLOWED_NUMBERS = [n.strip() for n in os.getenv("WHATSAPP_ALLOWED_NUMBERS", "").split(",") if n.strip()]
+
+# Signal (via signal-cli-rest-api Docker bridge)
+SIGNAL_CLI_URL = os.getenv("SIGNAL_CLI_URL", "")
+SIGNAL_PHONE_NUMBER = os.getenv("SIGNAL_PHONE_NUMBER", "")
+SIGNAL_ALLOWED_NUMBERS = [n.strip() for n in os.getenv("SIGNAL_ALLOWED_NUMBERS", "").split(",") if n.strip()]

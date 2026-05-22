@@ -191,6 +191,33 @@ def main():
             return f"Agent error: {e}"
     _discord.set_agent_run_fn(_discord_agent_run)
 
+    # Slack inbound dispatch
+    from tools import slack as _slack
+    def _slack_agent_run(text: str, *, channel_id: str | None = None) -> str:
+        try:
+            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
+        except Exception as e:
+            return f"Agent error: {e}"
+    _slack.set_agent_run_fn(_slack_agent_run)
+
+    # WhatsApp inbound dispatch
+    from tools import whatsapp as _whatsapp
+    def _whatsapp_agent_run(text: str, *, channel_id: str | None = None) -> str:
+        try:
+            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
+        except Exception as e:
+            return f"Agent error: {e}"
+    _whatsapp.set_agent_run_fn(_whatsapp_agent_run)
+
+    # Signal inbound dispatch
+    from tools import signal as _signal
+    def _signal_agent_run(text: str, *, channel_id: str | None = None) -> str:
+        try:
+            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
+        except Exception as e:
+            return f"Agent error: {e}"
+    _signal.set_agent_run_fn(_signal_agent_run)
+
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:
         from agent.awareness import AwarenessMonitor
