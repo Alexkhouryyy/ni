@@ -191,6 +191,87 @@ const SRC_COLOR = {
 let globeInstance = null;
 let globeArcs = [];
 let commandInited = false;
+
+// Solar system body definitions
+const SOLAR_BODIES = {
+  sun:     { label:'Sun',     icon:'☀',  colors:['#ffee00','#ff8800','#ff5500'],           atm:'#ff9900', atmAlt:0.55, speed:0.25 },
+  mercury: { label:'Mercury', icon:'☿',  colors:['#9e9e9e','#777777','#6d6d6d'],           atm:'#888888', atmAlt:0.04, speed:0.10 },
+  venus:   { label:'Venus',   icon:'♀',  colors:['#e8c887','#d4a84b','#c4933e'],           atm:'#dd9900', atmAlt:0.38, speed:0.06 },
+  earth:   { label:'Earth',   icon:'⊕',
+             texture:'//unpkg.com/three-globe/example/img/earth-night.jpg',
+             bumpTexture:'//unpkg.com/three-globe/example/img/earth-topology.png',
+             atm:'#5fd8ff', atmAlt:0.21, speed:0.70 },
+  moon:    { label:'Moon',    icon:'☽',  colors:['#d4d0c8','#b8b4ac','#a09890'],           atm:'#bbbbcc', atmAlt:0.02, speed:0.05 },
+  mars:    { label:'Mars',    icon:'♂',  colors:['#c1440e','#a03010','#8b2500'],           atm:'#ff5522', atmAlt:0.10, speed:0.65 },
+  jupiter: { label:'Jupiter', icon:'♃',  colors:['#c88b3a','#e0b060','#a06020','#d09050','#c88b3a'], bands:true,
+             atm:'#ddaa55', atmAlt:0.16, speed:1.30 },
+  saturn:  { label:'Saturn',  icon:'♄',  colors:['#e4d191','#d4b860','#c9a045'],           atm:'#ddcc60', atmAlt:0.14, speed:1.10 },
+  uranus:  { label:'Uranus',  icon:'♅',  colors:['#7de8e8','#60d0d0','#4db8b8'],           atm:'#88ffff', atmAlt:0.22, speed:0.90 },
+  neptune: { label:'Neptune', icon:'♆',  colors:['#3b5bdb','#2a4bc8','#1a3a9e'],           atm:'#5588ff', atmAlt:0.24, speed:0.95 },
+  pluto:   { label:'Pluto',   icon:'✦',  colors:['#b8a898','#a09080','#8a7868'],           atm:'#998888', atmAlt:0.03, speed:0.03 },
+};
+let currentBody = 'earth';
+const _bodyTextureCache = {};
+
+function makeBodyTexture(body) {
+  const w = 512, h = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (body.bands) {
+    const bh = h / body.colors.length;
+    body.colors.forEach((col, i) => {
+      ctx.fillStyle = col;
+      ctx.fillRect(0, Math.floor(i * bh), w, Math.ceil(bh) + 1);
+    });
+  } else {
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    body.colors.forEach((col, i) => g.addColorStop(i / (body.colors.length - 1), col));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
+function switchBody(key) {
+  const body = SOLAR_BODIES[key];
+  if (!body || !globeInstance) return;
+  currentBody = key;
+  document.querySelectorAll('.planet-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.body === key));
+  let tex = body.texture;
+  if (!tex) {
+    if (!_bodyTextureCache[key]) _bodyTextureCache[key] = makeBodyTexture(body);
+    tex = _bodyTextureCache[key];
+  }
+  globeInstance
+    .globeImageUrl(tex)
+    .bumpImageUrl(body.bumpTexture || '')
+    .atmosphereColor(body.atm)
+    .atmosphereAltitude(body.atmAlt);
+  globeInstance.controls().autoRotateSpeed = body.speed;
+  const glow = document.querySelector('.globe-glow');
+  if (glow) {
+    const c = body.atm;
+    glow.style.background =
+      `radial-gradient(circle, ${c}2e 0%, ${c}0d 55%, transparent 72%)`;
+  }
+}
+
+function renderPlanetSelector() {
+  const sel = document.getElementById('planet-selector');
+  if (!sel || sel.dataset.inited) return;
+  sel.dataset.inited = '1';
+  sel.innerHTML = Object.entries(SOLAR_BODIES).map(([key, body]) =>
+    `<button class="planet-btn${key === currentBody ? ' active' : ''}" data-body="${key}" title="${body.label}">` +
+    `<span class="planet-btn-icon">${body.icon}</span>` +
+    `<span class="planet-btn-label">${body.label}</span></button>`
+  ).join('');
+  sel.addEventListener('click', e => {
+    const btn = e.target.closest('.planet-btn');
+    if (btn) switchBody(btn.dataset.body);
+  });
+}
 let liveEventTimes = [];
 
 function registerLiveEvent() { liveEventTimes.push(Date.now()); }
@@ -294,6 +375,7 @@ function initGlobe() {
     ctrl.autoRotate = true;
     ctrl.autoRotateSpeed = 0.7;
     ctrl.enableZoom = false;
+    renderPlanetSelector();
   } catch (e) {
     console.error('globe init failed', e);
     mount.innerHTML = '<div class="globe-fallback"></div>';
