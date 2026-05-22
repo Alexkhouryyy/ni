@@ -375,7 +375,6 @@ function initGlobe() {
     ctrl.autoRotate = true;
     ctrl.autoRotateSpeed = 0.7;
     ctrl.enableZoom = false;
-    renderPlanetSelector();
   } catch (e) {
     console.error('globe init failed', e);
     mount.innerHTML = '<div class="globe-fallback"></div>';
@@ -433,6 +432,7 @@ async function loadCommand() {
     buildFeatureOrbit();
     initStarfield();
     initGlobe();
+    renderPlanetSelector();
     startCmdClock();
   }
   try {
