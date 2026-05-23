@@ -19,6 +19,54 @@ from typing import Optional
 from agent import longterm
 
 
+def skill_rate_in_window(
+    name: str,
+    start_ts: Optional[float],
+    end_ts: Optional[float],
+    min_turns: int = 0,
+) -> dict:
+    """Approval rate for one skill in a half-open timestamp window [start_ts, end_ts).
+
+    Either bound can be None (open-ended). Returns a dict with:
+      approval_rate (float|None), rated_turns (int), thumbs_up (int), thumbs_down (int)
+    """
+    conditions = ["s.name = ?"]
+    params: list = [name]
+    if start_ts is not None:
+        conditions.append("s.ts >= ?")
+        params.append(start_ts)
+    if end_ts is not None:
+        conditions.append("s.ts < ?")
+        params.append(end_ts)
+    where = " AND ".join(conditions)
+
+    with longterm._conn() as c:
+        row = c.execute(
+            f"""
+            SELECT
+                COUNT(f.id)                                                       AS rated,
+                COALESCE(SUM(CASE WHEN f.rating =  1 THEN 1 ELSE 0 END), 0)     AS ups,
+                COALESCE(SUM(CASE WHEN f.rating = -1 THEN 1 ELSE 0 END), 0)     AS downs
+            FROM skill_usage s
+            LEFT JOIN turn_feedback f
+                   ON f.session_id = s.session_id
+                  AND f.turn_index = s.turn_index
+            WHERE {where}
+            """,
+            params,
+        ).fetchone()
+
+    rated = row[0] or 0
+    ups = row[1] or 0
+    downs = row[2] or 0
+    return {
+        "approval_rate": round(ups / rated, 4) if rated >= max(min_turns, 1) else None,
+        "rated_turns": rated,
+        "thumbs_up": ups,
+        "thumbs_down": downs,
+    }
+
+
 def skill_outcomes(name: Optional[str] = None, days: int = 7) -> list[dict]:
     """Per-skill approval rate for rated turns.
 

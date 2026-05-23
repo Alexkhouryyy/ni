@@ -206,9 +206,18 @@ def consolidate(client, hours: int = 24, autosave: bool = True) -> dict:
     except Exception as e:
         print(f"[Reflection] skill refinement failed: {e}")
 
+    # Auto-rollback: check whether any recent skill rewrite hurt approval rate.
+    rollback_summary = {}
+    try:
+        from agent import rollback as rollback_mod
+        rollback_summary = rollback_mod.check_rewrites()
+    except Exception as e:
+        print(f"[Reflection] rollback check failed: {e}")
+
     return {
         "created": created, "applied": applied, "pending": created - applied,
         "skills_refined": skills_refined,
+        "rollback": rollback_summary,
     }
 
 
@@ -270,7 +279,7 @@ def refine_skills(client, hours: int = 24) -> dict:
             continue
         if not new_code.strip():
             continue
-        result = skills_mod.create_skill(name, skills_mod.get_description(name), new_code)
+        result = skills_mod.create_skill(name, skills_mod.get_description(name), new_code, _trigger="reflection")
         print(f"[Reflection] refined skill {name!r}: {result}")
         if "created and loaded" in result:
             refined += 1

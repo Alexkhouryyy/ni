@@ -236,6 +236,27 @@ def init_db():
             except Exception:
                 pass
 
+        # --- Phase 7: Skill rewrite audit + auto-rollback ---
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS skill_rewrites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,               -- when the rewrite happened
+                name TEXT NOT NULL,             -- skill name
+                old_source TEXT,                -- full file content before rewrite (NULL if brand new)
+                new_source TEXT NOT NULL,       -- full file content after rewrite
+                trigger TEXT DEFAULT 'manual',  -- 'manual' | 'reflection'
+                pre_approval_rate REAL,         -- approval rate in window before rewrite
+                pre_rated_turns INTEGER DEFAULT 0,
+                post_approval_rate REAL,        -- filled in by check_rewrites()
+                post_rated_turns INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'active',   -- 'active' | 'confirmed' | 'rolled_back'
+                rollback_ts REAL,
+                rollback_reason TEXT
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_rewrites_name ON skill_rewrites(name, ts DESC)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_rewrites_status ON skill_rewrites(status, ts DESC)")
+
 
 @contextmanager
 def _conn():

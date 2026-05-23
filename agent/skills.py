@@ -148,7 +148,13 @@ def get_description(name: str) -> str:
     return entry["description"] if entry else f"Skill {name}"
 
 
-def create_skill(name: str, description: str, code: str, version: str = "1.0") -> str:
+def create_skill(
+    name: str,
+    description: str,
+    code: str,
+    version: str = "1.0",
+    _trigger: str = "manual",
+) -> str:
     if not name.isidentifier():
         return f"Invalid skill name: {name!r} — must be a valid Python identifier."
     SKILLS_DIR.mkdir(exist_ok=True)
@@ -184,7 +190,52 @@ def create_skill(name: str, description: str, code: str, version: str = "1.0") -
             return f"Skill {name!r} kept at previous version — new code failed to import: {e}"
         path.unlink(missing_ok=True)
         return f"Skill written but import failed: {e}"
+
+    # Snapshot the rewrite for auto-rollback monitoring (only when overwriting).
+    if old_source is not None:
+        _record_rewrite(name, old_source, source, trigger=_trigger)
+
     return f"Skill {name!r} created and loaded from {path}."
+
+
+def _record_rewrite(name: str, old_source: str, new_source: str, trigger: str = "manual") -> None:
+    """Persist a rewrite snapshot to skill_rewrites. Best-effort — never raises."""
+    try:
+        from agent import longterm, outcomes
+        pre = outcomes.skill_rate_in_window(name, start_ts=None, end_ts=time.time())
+        with longterm._conn() as c:
+            c.execute(
+                """INSERT INTO skill_rewrites
+                   (ts, name, old_source, new_source, trigger, pre_approval_rate, pre_rated_turns)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    time.time(), name, old_source, new_source, trigger,
+                    pre["approval_rate"], pre["rated_turns"],
+                ),
+            )
+    except Exception as e:
+        print(f"[Skills] _record_rewrite failed: {e}")
+
+
+def restore_from_snapshot(rewrite_id: int) -> str:
+    """Restore a skill to the source stored in skill_rewrites.old_source."""
+    try:
+        from agent import longterm
+        with longterm._conn() as c:
+            row = c.execute(
+                "SELECT name, old_source FROM skill_rewrites WHERE id = ?", (rewrite_id,)
+            ).fetchone()
+        if not row:
+            return f"No rewrite #{rewrite_id}."
+        name, old_source = row
+        if not old_source:
+            return f"Rewrite #{rewrite_id} has no old_source (was a brand-new skill)."
+        path = _skill_path(name)
+        path.write_text(old_source)
+        _load(name)
+        return f"Skill {name!r} restored from snapshot #{rewrite_id}."
+    except Exception as e:
+        return f"Restore failed: {e}"
 
 
 def get_schema(name: str) -> Optional[dict]:

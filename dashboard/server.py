@@ -27,6 +27,7 @@ from agent import reflection as refl_mod
 from agent import telemetry as tel_mod
 from agent import feedback as fb_mod
 from agent import outcomes as outcomes_mod
+from agent import rollback as rollback_mod
 from tools import phone as phone_mod
 from tools import telegram as telegram_mod
 from tools import discord as discord_mod
@@ -455,6 +456,19 @@ def outcomes_skills(days: int = 7, name: str = ""):
 @app.get("/api/outcomes/reflections")
 def outcomes_reflections(days: int = 30, window_hours: int = 168):
     return outcomes_mod.reflection_outcomes(days=days, window_hours=window_hours)
+
+
+@app.get("/api/outcomes/rewrites")
+def list_rewrites_endpoint(days: int = 30):
+    return rollback_mod.list_rewrites(days=days)
+
+
+@app.post("/api/outcomes/check-rollback")
+async def check_rollback_endpoint(request: Request):
+    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    dry_run = (body or {}).get("dry_run", False)
+    result = rollback_mod.check_rewrites(dry_run=dry_run)
+    return result
 
 
 # --- Tier-4: Phone (Twilio webhooks + status) ---
