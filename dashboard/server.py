@@ -465,9 +465,16 @@ def list_rewrites_endpoint(days: int = 30):
 
 @app.post("/api/outcomes/check-rollback")
 async def check_rollback_endpoint(request: Request):
-    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    body = {}
+    if request.headers.get("content-type", "").startswith("application/json"):
+        try:
+            body = await request.json()
+        except Exception:
+            pass
     dry_run = (body or {}).get("dry_run", False)
-    result = rollback_mod.check_rewrites(dry_run=dry_run)
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, lambda: rollback_mod.check_rewrites(dry_run=dry_run))
+    ws_manager.broadcast_threadsafe({"type": "rollback_done", **result})
     return result
 
 

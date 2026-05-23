@@ -267,6 +267,44 @@ label.checkbox { color: var(--text-mute); font-size: 12.5px; display: flex; alig
 .status-error, .status-failed { color: var(--danger); }
 .status-running { color: var(--accent-2); }
 
+/* --- Outcome delta badge --- */
+.delta-badge {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 2px 6px; border-radius: 4px; margin-left: 6px;
+  font-variant-numeric: tabular-nums; vertical-align: middle;
+}
+.delta-good    { background: rgba(61,220,151,0.15); color: var(--success); }
+.delta-bad     { background: rgba(255,106,106,0.15); color: var(--danger); }
+.delta-neutral { background: rgba(255,255,255,0.07); color: var(--text-dim); }
+
+/* Stat value colouring (approval rate) */
+.stat-value.val-good { color: #3ddc97; }
+.stat-value.val-warn { color: #ffb547; }
+.stat-value.val-bad  { color: #ff6363; }
+
+/* --- Skill rewrites table --- */
+.rewrite-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.rewrite-table th {
+  text-align: left; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-dim);
+  padding: 6px 10px 8px; border-bottom: 1px solid var(--border);
+}
+.rewrite-table td {
+  padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--text);
+}
+.rewrite-table tr:last-child td { border-bottom: none; }
+.rewrite-table tr:hover td { background: rgba(255,255,255,0.025); }
+.rewrite-status {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 2px 7px; border-radius: 4px;
+}
+.rewrite-status-active      { background: rgba(255,255,255,0.07); color: var(--text-dim); }
+.rewrite-status-confirmed   { background: rgba(61,220,151,0.15); color: var(--success); }
+.rewrite-status-rolled_back { background: rgba(255,181,71,0.15); color: var(--warn); }
+
 /* Confidence bar */
 .confidence-bar {
   margin-top: 8px; height: 4px; background: var(--bg-4); border-radius: 2px; overflow: hidden;

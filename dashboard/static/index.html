@@ -182,9 +182,36 @@
   <!-- REFLECTIONS -->
   <section id="tab-reflections" class="tab">
     <header class="page-head">
-      <h1>Reflections</h1>
-      <div class="page-sub">Auto-extracted insights from your day. Accept to commit; reject to discard.</div>
+      <h1>Self-Improvement</h1>
+      <div class="page-sub">Reflections, skill rewrites, and outcome tracking</div>
     </header>
+
+    <!-- Outcome summary -->
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Approval rate (7d)</div>
+        <div class="stat-value" id="refl-stat-approval">—</div>
+        <div class="stat-meta" id="refl-stat-approval-meta"></div>
+        <div class="stat-bar"><div class="stat-bar-fill" id="refl-stat-approval-bar" style="width:0%"></div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Rated turns (7d)</div>
+        <div class="stat-value" id="refl-stat-turns">—</div>
+        <div class="stat-meta" id="refl-stat-turns-meta"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending reflections</div>
+        <div class="stat-value" id="refl-stat-pending">—</div>
+        <div class="stat-meta">awaiting approval</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Skill rewrites (30d)</div>
+        <div class="stat-value" id="refl-stat-rewrites">—</div>
+        <div class="stat-meta" id="refl-stat-rewrites-meta"></div>
+      </div>
+    </div>
+
+    <!-- Reflections list -->
     <div class="controls">
       <button id="refl-tab-pending" class="filter-btn active">Pending</button>
       <button id="refl-tab-applied" class="filter-btn">Applied</button>
@@ -192,6 +219,18 @@
       <button id="refl-run" class="primary-btn" style="margin-left:auto">Run consolidation now</button>
     </div>
     <div id="reflections-list" class="cards"></div>
+
+    <!-- Skill rewrites panel -->
+    <div class="panel" style="margin-top:24px">
+      <div class="panel-head">
+        <h3>Skill rewrites</h3>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="panel-sub" id="rewrites-summary"></span>
+          <button id="refl-check-rollback" class="filter-btn">Check rollbacks now</button>
+        </div>
+      </div>
+      <div id="rewrites-list"></div>
+    </div>
   </section>
 
   <!-- TELEMETRY -->

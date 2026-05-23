@@ -125,6 +125,10 @@ function connectWS() {
     if (msg.type === 'council_answer')      _councilAnswer(msg);
     if (msg.type === 'council_done')        _councilDone(msg);
     if (msg.type === 'council_error')       _councilError(msg.error);
+    // Refresh self-improvement panel when a rollback check completes
+    if (msg.type === 'rollback_done' && document.getElementById('tab-reflections')?.classList.contains('active')) {
+      loadReflections();
+    }
   };
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 25000);
 }
@@ -611,17 +615,92 @@ document.getElementById('graph-kind-filter')?.addEventListener('change', () => r
 
 // ============== REFLECTIONS ==============
 let reflectionsStatus = 'pending';
+
 async function loadReflections() {
-  const refl = await api('/api/reflections?status=' + reflectionsStatus);
+  // Fetch all data in parallel
+  const [refl, fbSummary, outcomeRefls, rewrites] = await Promise.allSettled([
+    api('/api/reflections?status=' + reflectionsStatus),
+    api('/api/feedback/summary?days=7'),
+    reflectionsStatus === 'applied' ? api('/api/outcomes/reflections?days=30') : Promise.resolve([]),
+    api('/api/outcomes/rewrites?days=30'),
+  ]).then(r => r.map(p => p.status === 'fulfilled' ? p.value : null));
+
+  // --- Stat cards ---
+  if (fbSummary) {
+    const rate = fbSummary.approval_rate;
+    const el = document.getElementById('refl-stat-approval');
+    if (el) {
+      el.textContent = rate != null ? (rate * 100).toFixed(0) + '%' : '—';
+      el.className = 'stat-value ' + (rate == null ? '' : rate >= 0.7 ? 'val-good' : rate >= 0.5 ? 'val-warn' : 'val-bad');
+    }
+    const bar = document.getElementById('refl-stat-approval-bar');
+    if (bar) bar.style.width = rate != null ? (rate * 100) + '%' : '0%';
+    const meta = document.getElementById('refl-stat-approval-meta');
+    if (meta) meta.textContent = `👍 ${fbSummary.thumbs_up}  👎 ${fbSummary.thumbs_down}`;
+    const turns = document.getElementById('refl-stat-turns');
+    if (turns) turns.textContent = fmtNum(fbSummary.total);
+    const turnsMeta = document.getElementById('refl-stat-turns-meta');
+    if (turnsMeta) {
+      const src = (fbSummary.by_source || []).map(s => `${s.source}: ${s.thumbs_up + s.thumbs_down}`).join(' · ');
+      if (turnsMeta) turnsMeta.textContent = src;
+    }
+  }
+
+  // Pending count badge
+  if (reflectionsStatus !== 'pending' || !refl) {
+    try {
+      const pending = await api('/api/reflections?status=pending&limit=1');
+      // We can't get count directly, so show list length of fresh fetch
+      const pendingEl = document.getElementById('refl-stat-pending');
+      if (pendingEl) pendingEl.textContent = Array.isArray(pending) ? pending.length : '—';
+    } catch (_) {}
+  } else {
+    const pendingEl = document.getElementById('refl-stat-pending');
+    if (pendingEl) pendingEl.textContent = Array.isArray(refl) ? refl.length : '—';
+  }
+
+  // Rewrites stat
+  if (rewrites) {
+    const rw = document.getElementById('refl-stat-rewrites');
+    if (rw) rw.textContent = rewrites.length;
+    const rwMeta = document.getElementById('refl-stat-rewrites-meta');
+    if (rwMeta) {
+      const rb = rewrites.filter(r => r.status === 'rolled_back').length;
+      const conf = rewrites.filter(r => r.status === 'confirmed').length;
+      rwMeta.textContent = rb ? `${rb} rolled back` : conf === rewrites.length && rewrites.length ? 'all confirmed' : 'active';
+    }
+    _renderRewrites(rewrites);
+  }
+
+  // --- Reflections list ---
   const wrap = document.getElementById('reflections-list');
-  wrap.innerHTML = refl.map(r => `
+  if (!wrap || !refl) return;
+
+  // Build outcome delta map (reflection_id → delta info) for applied view
+  const deltaMap = {};
+  if (Array.isArray(outcomeRefls)) {
+    outcomeRefls.forEach(o => { deltaMap[o.reflection_id] = o; });
+  }
+
+  wrap.innerHTML = refl.map(r => {
+    const outcome = deltaMap[r.id];
+    const deltaHtml = outcome ? _deltaBadge(outcome.delta, outcome.pre_turns, outcome.post_turns) : '';
+    return `
     <div class="card">
       <div class="card-head">
         <div style="flex:1">
-          <div class="card-title"><span class="badge kind-${r.kind}">${r.kind}</span> ${escapeHTML(r.content)}</div>
+          <div class="card-title">
+            <span class="badge kind-${r.kind}">${r.kind}</span>
+            ${escapeHTML(r.content)}
+            ${deltaHtml}
+          </div>
           <div class="card-meta">Confidence: ${(r.confidence * 100).toFixed(0)}% · ${fmtDate(r.ts)} · ${r.status}</div>
           <div class="confidence-bar"><div class="confidence-bar-fill" style="width:${r.confidence * 100}%"></div></div>
-          ${r.action && Object.keys(r.action).length ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text-mute)">Action</summary><pre style="margin-top:6px;background:var(--bg-3);padding:8px;border-radius:4px;font-size:11.5px;color:var(--text-mute)">${escapeHTML(JSON.stringify(r.action, null, 2))}</pre></details>` : ''}
+          ${r.action && Object.keys(r.action).length
+            ? `<details style="margin-top:8px">
+                 <summary style="cursor:pointer;font-size:12px;color:var(--text-mute)">Action</summary>
+                 <pre style="margin-top:6px;background:var(--bg-3);padding:8px;border-radius:4px;font-size:11.5px;color:var(--text-mute)">${escapeHTML(JSON.stringify(r.action, null, 2))}</pre>
+               </details>` : ''}
         </div>
       </div>
       ${r.status === 'pending' ? `
@@ -629,8 +708,57 @@ async function loadReflections() {
           <button class="accept" onclick="applyRefl(${r.id}, true)">Accept</button>
           <button class="reject" onclick="applyRefl(${r.id}, false)">Reject</button>
         </div>` : ''}
-    </div>`).join('') || `<div class="empty-state">No ${reflectionsStatus} reflections.</div>`;
+    </div>`;
+  }).join('') || `<div class="empty-state">No ${reflectionsStatus} reflections.</div>`;
 }
+
+function _deltaBadge(delta, preTurns, postTurns) {
+  if (delta == null) return `<span class="delta-badge delta-neutral" title="${preTurns} pre-turns, ${postTurns} post-turns">Δ n/a</span>`;
+  const sign = delta > 0 ? '+' : '';
+  const cls = delta > 0.05 ? 'delta-good' : delta < -0.05 ? 'delta-bad' : 'delta-neutral';
+  return `<span class="delta-badge ${cls}" title="${preTurns} pre-turns → ${postTurns} post-turns">${sign}${(delta * 100).toFixed(0)}pp</span>`;
+}
+
+function _renderRewrites(rewrites) {
+  const wrap = document.getElementById('rewrites-list');
+  const summary = document.getElementById('rewrites-summary');
+  if (!wrap) return;
+  if (summary) {
+    const rb = rewrites.filter(r => r.status === 'rolled_back').length;
+    summary.textContent = rb ? `${rb} auto-rolled back` : '';
+  }
+  if (!rewrites.length) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:12px 0">No skill rewrites in the last 30 days.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="rewrite-table">
+      <thead><tr>
+        <th>Skill</th><th>Trigger</th><th>Pre rate</th><th>Post rate</th><th>Delta</th><th>Status</th><th>Date</th>
+      </tr></thead>
+      <tbody>
+        ${rewrites.map(r => {
+          const pre = r.pre_approval_rate != null ? (r.pre_approval_rate * 100).toFixed(0) + '%' : '—';
+          const post = r.post_approval_rate != null ? (r.post_approval_rate * 100).toFixed(0) + '%' : '—';
+          const d = r.delta;
+          const deltaStr = d != null ? (d > 0 ? '+' : '') + (d * 100).toFixed(0) + 'pp' : '—';
+          const deltaCls = d == null ? '' : d > 0.05 ? 'delta-good' : d < -0.05 ? 'delta-bad' : 'delta-neutral';
+          const statusCls = 'rewrite-status-' + (r.status || 'active');
+          const reason = r.rollback_reason ? ` title="${escapeHTML(r.rollback_reason)}"` : '';
+          return `<tr>
+            <td><code>${escapeHTML(r.name)}</code></td>
+            <td><span class="badge">${escapeHTML(r.trigger || 'manual')}</span></td>
+            <td>${pre}</td>
+            <td>${post}</td>
+            <td><span class="delta-badge ${deltaCls}">${deltaStr}</span></td>
+            <td><span class="rewrite-status ${statusCls}"${reason}>${r.status}</span></td>
+            <td>${fmtDate(r.ts)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
 async function applyRefl(id, accept) {
   await api(`/api/reflections/${id}/apply`, { method: 'POST', body: { accept } });
   loadReflections();
@@ -644,14 +772,26 @@ async function applyRefl(id, accept) {
   });
 });
 document.getElementById('refl-run').addEventListener('click', async () => {
-  document.getElementById('refl-run').textContent = 'Running...';
-  document.getElementById('refl-run').disabled = true;
+  const btn = document.getElementById('refl-run');
+  btn.textContent = 'Running…'; btn.disabled = true;
   try {
     const r = await api('/api/reflections/run', { method: 'POST', body: { hours: 24 } });
-    alert(`Created ${r.created} reflections, auto-applied ${r.applied}, pending ${r.pending || 0}.`);
+    const rb = r.rollback || {};
+    const rbMsg = rb.rolled_back ? ` · ${rb.rolled_back} skill(s) rolled back` : '';
+    alert(`Created ${r.created} reflections, auto-applied ${r.applied}, pending ${r.pending || 0}.${rbMsg}`);
   } catch (e) { alert('Failed: ' + e.message); }
-  document.getElementById('refl-run').textContent = 'Run consolidation now';
-  document.getElementById('refl-run').disabled = false;
+  btn.textContent = 'Run consolidation now'; btn.disabled = false;
+  loadReflections();
+});
+document.getElementById('refl-check-rollback')?.addEventListener('click', async () => {
+  const btn = document.getElementById('refl-check-rollback');
+  btn.textContent = 'Checking…'; btn.disabled = true;
+  try {
+    const r = await api('/api/outcomes/check-rollback', { method: 'POST', body: {} });
+    const msg = `Checked ${r.checked} rewrites — ${r.rolled_back} rolled back, ${r.confirmed} confirmed, ${r.skipped_not_enough_data} waiting for more data.`;
+    alert(msg);
+  } catch (e) { alert('Check failed: ' + e.message); }
+  btn.textContent = 'Check rollbacks now'; btn.disabled = false;
   loadReflections();
 });
 
