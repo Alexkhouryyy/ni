@@ -118,7 +118,7 @@ function connectWS() {
       msg.data.events_recent.forEach(e => addFeedItem(e));
     }
     if (msg.type === 'chat_token') _chatAppendToken(msg.delta, msg.chat_id);
-    if (msg.type === 'chat_done')  _chatFinalize(msg.chat_id, msg.response);
+    if (msg.type === 'chat_done')  _chatFinalize(msg.chat_id, msg.response, msg.session_id, msg.turn_index);
     if (msg.type === 'chat_error') _chatError(msg.error, msg.chat_id);
     if (msg.type === 'council_progress')    _councilProgress(msg.message);
     if (msg.type === 'council_round_start') _councilRoundStart(msg.round, msg.members);
@@ -990,14 +990,23 @@ function _chatAppendToken(delta, chatId) {
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
 }
 
-function _chatFinalize(chatId, response) {
+function _chatFinalize(chatId, response, sessionId, turnIndex) {
   if (activeChatId !== chatId) return;
   if (currentAgentBubble) {
     currentAgentBubble.classList.remove('streaming');
+    if (sessionId != null && turnIndex != null) {
+      currentAgentBubble.dataset.sessionId = String(sessionId);
+      currentAgentBubble.dataset.turnIndex = String(turnIndex);
+    }
     if (currentAgentBubble.dataset.prompt) {
       const footer = document.createElement('div');
       footer.className = 'chat-msg-footer';
+      const fbDisabled = (sessionId == null || turnIndex == null) ? 'disabled' : '';
       footer.innerHTML =
+        '<button type="button" class="chat-feedback-btn fb-up" data-rating="1" ' + fbDisabled +
+        ' title="Mark this response helpful">👍</button>' +
+        '<button type="button" class="chat-feedback-btn fb-down" data-rating="-1" ' + fbDisabled +
+        ' title="Mark this response unhelpful">👎</button>' +
         '<button type="button" class="chat-second-opinion-btn" ' +
         'title="Send the original question to the council">' +
         '<span class="cso-icon">⚖</span> Second opinion</button>';
@@ -1023,6 +1032,32 @@ document.addEventListener('click', e => {
   const q = document.getElementById('council-question');
   if (q) q.value = prompt;
   runCouncil();
+});
+
+// 👍/👎 feedback buttons on chat bubbles
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.chat-feedback-btn');
+  if (!btn || btn.disabled) return;
+  const bubble = btn.closest('.chat-msg');
+  const sessionId = bubble?.dataset.sessionId;
+  const turnIndex = bubble?.dataset.turnIndex;
+  if (sessionId == null || turnIndex == null) return;
+  const rating = parseInt(btn.dataset.rating, 10);
+  try {
+    await api('/api/feedback', {
+      method: 'POST',
+      body: {
+        rating, session_id: parseInt(sessionId, 10),
+        turn_index: parseInt(turnIndex, 10), source: 'dashboard',
+      },
+    });
+    // Mark the chosen one selected; clear the other.
+    const footer = btn.parentElement;
+    footer?.querySelectorAll('.chat-feedback-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+  } catch (err) {
+    console.error('feedback failed', err);
+  }
 });
 
 function _chatError(error, chatId) {

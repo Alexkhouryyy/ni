@@ -25,6 +25,7 @@ from agent import scheduler as sched
 from agent import entities as ent_mod
 from agent import reflection as refl_mod
 from agent import telemetry as tel_mod
+from agent import feedback as fb_mod
 from tools import phone as phone_mod
 from tools import telegram as telegram_mod
 from tools import discord as discord_mod
@@ -397,6 +398,48 @@ def search_turns_endpoint(q: str, limit: int = 20, session_id: int = None):
     return longterm.search_turns(q, limit=limit, session_id=session_id)
 
 
+# --- Phase 7: User feedback (👍/👎) on completed turns ---
+@app.post("/api/feedback")
+async def feedback_endpoint(request: Request):
+    body = await request.json()
+    try:
+        rating = int(body.get("rating"))
+        session_id = int(body.get("session_id"))
+        turn_index = int(body.get("turn_index"))
+    except (TypeError, ValueError):
+        return JSONResponse(
+            {"error": "rating, session_id, turn_index are required ints"},
+            status_code=400,
+        )
+    try:
+        row = fb_mod.record(
+            rating,
+            session_id=session_id,
+            turn_index=turn_index,
+            comment=(body.get("comment") or "").strip(),
+            source=(body.get("source") or "dashboard"),
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True, "feedback": row}
+
+
+@app.get("/api/feedback/recent")
+def feedback_recent(limit: int = 50, days: int = 30):
+    return fb_mod.recent(limit=limit, days=days)
+
+
+@app.get("/api/feedback/summary")
+def feedback_summary_endpoint(days: int = 7):
+    return fb_mod.summary(days=days)
+
+
+@app.get("/api/feedback/turn")
+def feedback_for_turn(session_id: int, turn_index: int):
+    row = fb_mod.for_turn(session_id, turn_index)
+    return row or {}
+
+
 # --- Tier-4: Phone (Twilio webhooks + status) ---
 @app.get("/api/phone/status")
 def phone_status():
@@ -550,8 +593,24 @@ async def chat_endpoint(request: Request):
             ws_manager.broadcast_threadsafe({"type": "chat_error", "error": str(e), "chat_id": chat_id})
             return JSONResponse({"error": str(e)}, status_code=500)
 
-    ws_manager.broadcast_threadsafe({"type": "chat_done", "response": response, "chat_id": chat_id})
-    return {"ok": True, "response": response, "chat_id": chat_id}
+    # Capture the turn this exchange landed on so the dashboard can attach
+    # feedback (👍/👎) to the right bubble.
+    session_id = tel_mod._session_id
+    turn_index = tel_mod.current_turn()
+    ws_manager.broadcast_threadsafe({
+        "type": "chat_done",
+        "response": response,
+        "chat_id": chat_id,
+        "session_id": session_id,
+        "turn_index": turn_index,
+    })
+    return {
+        "ok": True,
+        "response": response,
+        "chat_id": chat_id,
+        "session_id": session_id,
+        "turn_index": turn_index,
+    }
 
 
 # --- Council: Claude / GPT / Gemini debate ---

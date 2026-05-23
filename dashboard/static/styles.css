@@ -988,6 +988,32 @@ pre { font-family: 'SF Mono', Menlo, monospace; }
 }
 .chat-second-opinion-btn .cso-icon { font-size: 13px; }
 
+.chat-feedback-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim, #999);
+  font-size: 13px; line-height: 1;
+  padding: 3px 7px; border-radius: 6px;
+  cursor: pointer; font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.chat-feedback-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.20);
+  color: var(--text);
+}
+.chat-feedback-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.chat-feedback-btn.selected.fb-up {
+  background: rgba(80, 200, 120, 0.18);
+  border-color: rgba(80, 200, 120, 0.55);
+  color: #6ed694;
+}
+.chat-feedback-btn.selected.fb-down {
+  background: rgba(255, 99, 99, 0.18);
+  border-color: rgba(255, 99, 99, 0.55);
+  color: #ff7c7c;
+}
+
 .chat-council-btn {
   flex-shrink: 0;
   background: var(--bg-2);

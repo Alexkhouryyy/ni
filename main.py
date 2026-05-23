@@ -136,6 +136,10 @@ def main():
     # Goals — init tables + auto-schedule weekly self-eval (once per fresh DB)
     from agent import goals
     goals.init_db()
+
+    # Feedback — init turn_feedback table for 👍/👎 capture
+    from agent import feedback
+    feedback.init_db()
     weekly_eval_exists = any(
         "Weekly self-evaluation" in t.get("description", "") for t in sched.list_tasks()
     )
@@ -391,6 +395,45 @@ def main():
                 result = agent.set_model(parts[1].strip())
                 speak(result)
             continue
+
+        # /feedback +1 [comment] | /feedback -1 [comment] — rate the last completed turn
+        if user_input.startswith("/feedback"):
+            from agent import feedback, telemetry as _tel
+            parts = user_input.split(None, 2)
+            if len(parts) < 2 or parts[1] not in {"+1", "1", "-1", "up", "down"}:
+                speak("Usage: /feedback +1 [comment]  |  /feedback -1 [comment]")
+                continue
+            rating = -1 if parts[1] in {"-1", "down"} else 1
+            comment = parts[2].strip() if len(parts) > 2 else ""
+            last_turn = _tel.current_turn()
+            if last_turn < 1:
+                speak("No turn to rate yet.")
+                continue
+            try:
+                feedback.record(
+                    rating, session_id=session_id, turn_index=last_turn,
+                    comment=comment, source="cli",
+                )
+                speak(f"Recorded {'👍' if rating == 1 else '👎'} for turn #{last_turn}.")
+            except Exception as e:
+                speak(f"Feedback failed: {e}")
+            continue
+
+        # Voice/text feedback phrases ("thumbs up", "that was wrong") — short messages only
+        if not user_input.startswith("/"):
+            from agent import feedback, telemetry as _tel
+            phrase_rating = feedback.detect_feedback_phrase(user_input)
+            if phrase_rating is not None and _tel.current_turn() >= 1:
+                try:
+                    feedback.record(
+                        phrase_rating, session_id=session_id,
+                        turn_index=_tel.current_turn(),
+                        comment=user_input, source="voice" if not args.text else "cli",
+                    )
+                    speak(f"Got it — recorded {'👍' if phrase_rating == 1 else '👎'}.")
+                except Exception:
+                    pass
+                continue
 
         # /council command — Claude, GPT, and Gemini debate to the best answer
         if user_input.startswith("/council"):
