@@ -176,8 +176,13 @@ def consolidate(client, hours: int = 24, autosave: bool = True) -> dict:
         return {"error": f"JSON parse failed: {e}", "raw": text[start:end][:400], "created": 0, "applied": 0}
 
     session_ids = ",".join(str(s["id"]) for s in data["sessions"])
-    created, applied = 0, 0
+    created = 0
     now = time.time()
+    pending_actions: list[dict] = []
+
+    # Insert all reflection rows in one transaction, collect actions to apply after.
+    # Applying actions inside the same write transaction causes "database is locked"
+    # because _apply_action() opens its own connection.
     with longterm._conn() as c:
         for item in arr:
             kind = (item.get("kind") or "insight").strip()
@@ -193,11 +198,16 @@ def consolidate(client, hours: int = 24, autosave: bool = True) -> dict:
             )
             created += 1
             if should_apply:
-                try:
-                    _apply_action(action)
-                    applied += 1
-                except Exception as e:
-                    print(f"[Reflection] auto-apply failed: {e}")
+                pending_actions.append(action)
+
+    # Apply actions after the write transaction has been committed and closed.
+    applied = 0
+    for action in pending_actions:
+        try:
+            _apply_action(action)
+            applied += 1
+        except Exception as e:
+            print(f"[Reflection] auto-apply failed: {e}")
 
     # Self-improving skills: rewrite any skill that has been failing repeatedly.
     skills_refined = 0
