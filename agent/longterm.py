@@ -223,10 +223,18 @@ def init_db():
                 name TEXT NOT NULL,
                 success INTEGER NOT NULL,        -- 1 = ok, 0 = raised
                 duration REAL,                   -- seconds
-                error TEXT                       -- NULL on success
+                error TEXT,                      -- NULL on success
+                session_id INTEGER,              -- ambient telemetry session at call time
+                turn_index INTEGER               -- ambient telemetry turn at call time
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_skill_usage_name ON skill_usage(name, ts DESC)")
+        # Migration: add session_id / turn_index if upgrading from pre-Phase-7 schema
+        for col in ("session_id", "turn_index"):
+            try:
+                c.execute(f"ALTER TABLE skill_usage ADD COLUMN {col} INTEGER")
+            except Exception:
+                pass
 
 
 @contextmanager

@@ -94,11 +94,16 @@ def run_skill(name: str, inputs: dict) -> str:
 def _log_usage(name: str, success: bool, duration: float, error: Optional[str] = None) -> None:
     """Record one skill run to skill_usage. Best-effort — never raises."""
     try:
-        from agent import longterm
+        from agent import longterm, telemetry
         with longterm._conn() as c:
             c.execute(
-                "INSERT INTO skill_usage (ts, name, success, duration, error) VALUES (?, ?, ?, ?, ?)",
-                (time.time(), name, 1 if success else 0, duration, error),
+                "INSERT INTO skill_usage "
+                "(ts, name, success, duration, error, session_id, turn_index) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    time.time(), name, 1 if success else 0, duration, error,
+                    telemetry._session_id, telemetry._turn_index,
+                ),
             )
     except Exception:
         pass

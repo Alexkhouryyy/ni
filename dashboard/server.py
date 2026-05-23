@@ -26,6 +26,7 @@ from agent import entities as ent_mod
 from agent import reflection as refl_mod
 from agent import telemetry as tel_mod
 from agent import feedback as fb_mod
+from agent import outcomes as outcomes_mod
 from tools import phone as phone_mod
 from tools import telegram as telegram_mod
 from tools import discord as discord_mod
@@ -438,6 +439,22 @@ def feedback_summary_endpoint(days: int = 7):
 def feedback_for_turn(session_id: int, turn_index: int):
     row = fb_mod.for_turn(session_id, turn_index)
     return row or {}
+
+
+# --- Phase 7: Outcome tracking ---
+@app.get("/api/outcomes/overall")
+def outcomes_overall(days: int = 7):
+    return outcomes_mod.overall(days=days)
+
+
+@app.get("/api/outcomes/skills")
+def outcomes_skills(days: int = 7, name: str = ""):
+    return outcomes_mod.skill_outcomes(name=name or None, days=days)
+
+
+@app.get("/api/outcomes/reflections")
+def outcomes_reflections(days: int = 30, window_hours: int = 168):
+    return outcomes_mod.reflection_outcomes(days=days, window_hours=window_hours)
 
 
 # --- Tier-4: Phone (Twilio webhooks + status) ---
