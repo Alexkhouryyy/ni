@@ -1029,6 +1029,10 @@ def _execute_tool(name: str, inputs: dict) -> str:
             return sched.cancel(inputs["task_id"])
 
         elif name.startswith("mcp__"):
+            if name.startswith("mcp__hass") or name.startswith("mcp__homeassistant"):
+                from agent.iot import is_enabled as _iot_enabled
+                if not _iot_enabled():
+                    return "[IoT is disabled — toggle it on in the dashboard or say '/iot on']"
             return mcp_client.call(name, inputs)
 
         elif name == "spawn_subagent":

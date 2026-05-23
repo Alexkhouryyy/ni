@@ -174,10 +174,18 @@ class AwarenessMonitor:
         self.clipboard = ClipboardWatcher(self.log)
         self.files = FileWatcher(self.log, watch_paths or [])
 
+        # IoT watcher — only starts if env flag is set and entities are configured
+        self.iot: Optional[threading.Thread] = None
+        if config.IOT_ENABLED and config.IOT_AWARENESS_ENTITIES:
+            from agent.iot_watcher import IoTWatcher
+            self.iot = IoTWatcher(self.log)
+
     def start(self) -> None:
         self.window.start()
         self.clipboard.start()
         self.files.start()
+        if self.iot is not None:
+            self.iot.start()
         self._reviewer = threading.Thread(target=self._review_loop, daemon=True, name="AwarenessReviewer")
         self._reviewer.start()
         print(f"[Awareness] Monitor started (review every {self.review_interval}s).")
@@ -187,6 +195,8 @@ class AwarenessMonitor:
         self.window.stop()
         self.clipboard.stop()
         self.files.stop()
+        if self.iot is not None:
+            self.iot.stop()
 
     def _review_loop(self) -> None:
         last_summary = ""

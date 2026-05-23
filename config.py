@@ -150,3 +150,15 @@ SIGNAL_ALLOWED_NUMBERS = [n.strip() for n in os.getenv("SIGNAL_ALLOWED_NUMBERS",
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 # To add a local model to the council, set this to e.g. ollama/llama3.1
 OLLAMA_COUNCIL_MODEL = os.getenv("OLLAMA_COUNCIL_MODEL", "")
+
+# IoT — Home Assistant integration (opt-in, off by default)
+IOT_ENABLED = os.getenv("IOT_ENABLED", "false").lower() in {"1", "true", "yes"}
+IOT_HA_URL = os.getenv("IOT_HA_URL", "")          # e.g. http://homeassistant.local:8123
+IOT_HA_TOKEN = os.getenv("IOT_HA_TOKEN", "")      # HA long-lived access token
+IOT_WEBHOOK_SECRET = os.getenv("IOT_WEBHOOK_SECRET", "")  # HMAC secret for inbound webhooks
+# Comma-separated entity_id allowlist for the passive awareness watcher.
+# Leave blank to disable (recommended — don't flood the awareness log).
+IOT_AWARENESS_ENTITIES = [e.strip() for e in os.getenv("IOT_AWARENESS_ENTITIES", "").split(",") if e.strip()]
+# Comma-separated entity_id allowlist for inbound trigger webhooks.
+# Leave blank to block all inbound triggers.
+IOT_TRIGGER_ALLOWED_ENTITIES = [e.strip() for e in os.getenv("IOT_TRIGGER_ALLOWED_ENTITIES", "").split(",") if e.strip()]

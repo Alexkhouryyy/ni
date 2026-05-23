@@ -34,6 +34,8 @@ from tools import discord as discord_mod
 from tools import slack as slack_mod
 from tools import whatsapp as whatsapp_mod
 from tools import signal as signal_mod
+from tools import iot as iot_mod
+from agent import iot as iot_state
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -113,7 +115,7 @@ if STATIC_DIR.exists():
 _WEBHOOK_PATHS = frozenset({
     "/telegram/webhook", "/discord/interactions",
     "/twilio/sms", "/twilio/voice", "/twilio/whatsapp",
-    "/slack/events", "/signal/webhook",
+    "/slack/events", "/signal/webhook", "/iot/webhook",
 })
 
 
@@ -601,6 +603,45 @@ def signal_status():
         "phone_number": getattr(config, "SIGNAL_PHONE_NUMBER", ""),
         "allowed_numbers": getattr(config, "SIGNAL_ALLOWED_NUMBERS", []),
     }
+
+
+# --- IoT ---
+@app.post("/iot/webhook")
+async def iot_webhook(request: Request):
+    body = await request.body()
+    sig = request.headers.get("X-Apex-Signature", "")
+    if not iot_state.verify_signature(sig or None, body):
+        return JSONResponse({"error": "invalid signature"}, status_code=403)
+    if not iot_state.is_enabled():
+        return JSONResponse({"error": "IoT is disabled"}, status_code=503)
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, lambda: iot_mod.dispatch_inbound(payload))
+    return {"ok": True}
+
+
+@app.get("/api/iot/status")
+def iot_status():
+    return {
+        "env_enabled": config.IOT_ENABLED,
+        "runtime_enabled": iot_state.is_enabled(),
+        "ha_url": config.IOT_HA_URL or "",
+        "ha_configured": bool(config.IOT_HA_URL and config.IOT_HA_TOKEN),
+        "awareness_entities": config.IOT_AWARENESS_ENTITIES,
+        "trigger_entities": config.IOT_TRIGGER_ALLOWED_ENTITIES,
+        "webhook_secret_set": bool(config.IOT_WEBHOOK_SECRET),
+    }
+
+
+@app.post("/api/iot/toggle")
+async def iot_toggle(request: Request):
+    body = await request.json()
+    value = bool(body.get("enabled", not iot_state.is_enabled()))
+    iot_state.set_enabled(value, source="dashboard")
+    return {"ok": True, "enabled": value}
 
 
 # --- Chat ---

@@ -28,6 +28,15 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home", "/tmp"],
       "env": {}
+    },
+    "_example_homeassistant": {
+      "_note": "Remove the leading underscore from this key to activate. Requires: pip install mcp-server-home-assistant",
+      "command": "uvx",
+      "args": ["mcp-server-home-assistant"],
+      "env": {
+        "HASS_URL": "http://homeassistant.local:8123",
+        "HASS_TOKEN": "your_long_lived_access_token_here"
+      }
     }
   }
 }

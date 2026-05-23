@@ -19,6 +19,10 @@ _RULES: list[tuple[str, str, re.Pattern, str]] = [
     ("sms_send", "to", re.compile(r".+"), "sending an SMS to a real phone number"),
     ("call_user", "to", re.compile(r".+"), "placing an outbound voice call"),
     ("generate_image", "prompt", re.compile(r".+"), "generating an image (uses Replicate credits)"),
+    # IoT: irreversible or safety-critical HA actions require confirmation
+    ("iot_call_service", "domain", re.compile(r"^(lock|alarm_control_panel)$", re.I), "controlling a lock or alarm"),
+    ("iot_call_service", "service", re.compile(r"^(unlock|open_cover|disarm|trigger)$", re.I), "unlocking / opening / disarming an IoT device"),
+    ("iot_call_service", "data", re.compile(r"garage|door_lock", re.I), "operating a garage or door lock"),
 ]
 
 _confirm_fn = None  # injected at startup: a callable(prompt: str) -> bool

@@ -222,6 +222,20 @@ def main():
             return f"Agent error: {e}"
     _signal.set_agent_run_fn(_signal_agent_run)
 
+    # IoT inbound dispatch (only wired when env flag is set)
+    if config.IOT_ENABLED:
+        from agent import iot as _iot_state
+        _iot_state.init_db()
+        from tools import iot as _iot
+        def _iot_agent_run(text: str, *, channel_id: str | None = None) -> str:
+            try:
+                return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
+            except Exception as e:
+                return f"Agent error: {e}"
+        _iot.set_agent_run_fn(_iot_agent_run)
+        if not config.IOT_WEBHOOK_SECRET:
+            print("[IoT] WARNING: IOT_WEBHOOK_SECRET not set — inbound webhooks are unauthenticated.")
+
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:
         from agent.awareness import AwarenessMonitor
@@ -434,6 +448,26 @@ def main():
                 except Exception:
                     pass
                 continue
+
+        # /iot command — toggle IoT integration on/off or check status
+        if user_input.startswith("/iot"):
+            if not config.IOT_ENABLED:
+                speak("IoT is not enabled. Set IOT_ENABLED=true in .env and restart.")
+                continue
+            from agent import iot as _iot_state
+            parts = user_input.split(None, 1)
+            sub = parts[1].strip().lower() if len(parts) > 1 else "status"
+            if sub in {"on", "enable", "1", "true"}:
+                _iot_state.set_enabled(True, source="cli")
+                speak("IoT enabled.")
+            elif sub in {"off", "disable", "0", "false"}:
+                _iot_state.set_enabled(False, source="cli")
+                speak("IoT disabled.")
+            else:
+                state = "enabled" if _iot_state.is_enabled() else "disabled"
+                ha_url = config.IOT_HA_URL or "(not configured)"
+                speak(f"IoT is currently {state}. HA URL: {ha_url}")
+            continue
 
         # /council command — Claude, GPT, and Gemini debate to the best answer
         if user_input.startswith("/council"):
