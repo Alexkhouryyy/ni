@@ -151,6 +151,10 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 # To add a local model to the council, set this to e.g. ollama/llama3.1
 OLLAMA_COUNCIL_MODEL = os.getenv("OLLAMA_COUNCIL_MODEL", "")
 
+# Webcam — local camera capture (opt-in, off by default; requires opencv-python)
+CAMERA_ENABLED = os.getenv("CAMERA_ENABLED", "false").lower() in {"1", "true", "yes"}
+CAMERA_DEVICE_INDEX = int(os.getenv("CAMERA_DEVICE_INDEX", "0"))
+
 # IoT — Home Assistant integration (opt-in, off by default)
 IOT_ENABLED = os.getenv("IOT_ENABLED", "false").lower() in {"1", "true", "yes"}
 IOT_HA_URL = os.getenv("IOT_HA_URL", "")          # e.g. http://homeassistant.local:8123

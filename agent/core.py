@@ -34,6 +34,7 @@ edge cases, and alternatives before touching anything.
 
 ## CAPABILITIES:
 - **screenshot**: See the current state of the user's screen (always do this before acting on the UI)
+- **camera_capture**: Look through the user's webcam at the real world. Use for "what am I doing", "how do I look", "is anyone in the room", etc. Screenshot is for screen content; camera is for physical reality. Disabled unless the user has opted in (returns an error message if so).
 - **click / right_click / double_click**: Click anywhere on screen
 - **type_text**: Type text at cursor position
 - **hotkey**: Press key combinations (e.g. ctrl+c, alt+tab, super+l)
@@ -123,6 +124,17 @@ TOOLS = [
         "name": "screenshot",
         "description": "Capture the current state of the user's screen. Always call this before interacting with the UI.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "camera_capture",
+        "description": "Capture a single frame from the user's webcam and look at it. Use when the user asks 'what am I doing', 'how do I look', 'is there anyone in the room', 'check the camera', or any question requiring real-world visual input (vs. screen content). Disabled by default — returns an error if CAMERA_ENABLED is not set.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "device_index": {"type": "integer", "description": "Camera device index (0 = default). Optional.", "default": 0},
+            },
+            "required": [],
+        },
     },
     {
         "name": "click",
@@ -934,6 +946,14 @@ def _execute_tool(name: str, inputs: dict) -> str:
             # Return as a special marker — handled in run() to inject image content
             return json.dumps({"__screenshot__": b64, "size": list(size)})
 
+        elif name == "camera_capture":
+            from tools import camera
+            try:
+                b64, size = camera.capture(inputs.get("device_index"))
+            except Exception as e:
+                return f"[Camera] {e}"
+            return json.dumps({"__screenshot__": b64, "size": list(size)})
+
         elif name == "click":
             return computer.click(inputs["x"], inputs["y"], inputs.get("button", "left"), inputs.get("double", False))
 
@@ -1229,17 +1249,18 @@ def _execute_tool(name: str, inputs: dict) -> str:
 
 def _make_tool_result_content(name: str, tool_use_id: str, result_str: str) -> dict:
     """Build a tool_result content block, injecting images for screenshots."""
-    if name in ("screenshot", "browser_screenshot", "annotate_screenshot"):
+    if name in ("screenshot", "browser_screenshot", "annotate_screenshot", "camera_capture"):
         try:
             data = json.loads(result_str)
             if "__screenshot__" in data:
                 media = "image/png" if name == "browser_screenshot" else "image/jpeg"
+                label = "Camera frame" if name == "camera_capture" else "Screen size"
                 return {
                     "type": "tool_result",
                     "tool_use_id": tool_use_id,
                     "content": [
                         {"type": "image", "source": {"type": "base64", "media_type": media, "data": data["__screenshot__"]}},
-                        {"type": "text", "text": f"Screen size: {data['size'][0]}x{data['size'][1]}"},
+                        {"type": "text", "text": f"{label}: {data['size'][0]}x{data['size'][1]}"},
                     ],
                 }
         except Exception:
