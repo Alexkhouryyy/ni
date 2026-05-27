@@ -31,13 +31,21 @@ def build_parser():
     p.add_argument("--think", action="store_true", help="Enable extended thinking for all queries")
     p.add_argument("--no-proactive", action="store_true", help="Disable proactive screen monitoring")
     p.add_argument("--no-screenshot", action="store_true", help="Don't auto-attach screenshot to each message")
-    p.add_argument("--wake", action="store_true", help="Hands-free wake word mode (say 'hey agent')")
+    p.add_argument("--wake", action="store_true", help="Hands-free wake word mode (say 'Apex')")
+    p.add_argument("--resident", action="store_true", help="Always-on background companion with tray icon and global hotkey")
     p.add_argument("--model", type=str, default=None, help="Override starting model (e.g. gpt-4o, claude-sonnet-4-6)")
     return p
 
 
 def main():
     args = build_parser().parse_args()
+
+    # Resident mode: always-on background companion with tray + global hotkey.
+    # Hands off to a dedicated entry point that owns the state machine.
+    if args.resident:
+        from app.resident import run_resident
+        run_resident(model_override=args.model)
+        return
 
     if args.no_proactive:
         config.PROACTIVE_ENABLED = False

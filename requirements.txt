@@ -30,4 +30,7 @@ python-multipart
 prompt_toolkit  # terminal UI mode (--tui)
 cryptography    # Ed25519 verification for inbound Discord interactions
 openai>=1.40.0   # required for GPT models, Gemini (OpenAI-compatible endpoint), and OpenAI voice
+pystray         # system tray icon (--resident)
+pynput          # global hotkeys (--resident)
+plyer           # cross-platform desktop notifications (--resident)
 pytest>=8.0

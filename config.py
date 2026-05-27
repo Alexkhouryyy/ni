@@ -33,8 +33,16 @@ PROACTIVE_INTERVAL = 30         # seconds between screen checks
 PROACTIVE_ENABLED = True
 
 # Wake word
-WAKE_WORD_ENABLED = False       # set to True for hands-free always-on mode
-WAKE_PHRASES = ["hey agent", "okay agent", "ok agent"]
+WAKE_WORD_ENABLED = os.getenv("WAKE_WORD_ENABLED", "true").lower() in {"1", "true", "yes"}
+WAKE_PHRASES = ["apex", "hey apex", "yo apex", "okay apex", "ok apex"]
+
+# Resident mode — always-on background companion (python main.py --resident)
+RESIDENT_SILENT_BOOT = os.getenv("RESIDENT_SILENT_BOOT", "true").lower() in {"1", "true", "yes"}
+RESIDENT_LOG_FILE = os.path.expanduser(os.getenv("RESIDENT_LOG_FILE", "~/.apex/resident.log"))
+RESIDENT_AUDIT_FILE = os.path.expanduser(os.getenv("RESIDENT_AUDIT_FILE", "~/.apex/wake_audit.log"))
+RESIDENT_GLOBAL_HOTKEY = os.getenv("RESIDENT_GLOBAL_HOTKEY", "<ctrl>+<space>")
+RESIDENT_MUTE_HOTKEY = os.getenv("RESIDENT_MUTE_HOTKEY", "<ctrl>+<alt>+m")
+RESIDENT_WAKE_REQUIRE_CONTINUATION = True  # "apex" alone won't trigger — must be followed by a request
 
 # Awareness watchers
 AWARENESS_ENABLED = True

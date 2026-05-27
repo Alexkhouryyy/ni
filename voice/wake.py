@@ -19,8 +19,7 @@ import numpy as np
 import config
 
 DEFAULT_WAKE_PHRASES = [
-    "hey agent", "okay agent", "ok agent", "agent listen", "yo agent",
-    "hey claude", "okay claude",
+    "apex", "hey apex", "yo apex", "okay apex", "ok apex", "apex listen",
 ]
 
 
@@ -33,12 +32,22 @@ class WakeWordListener:
         self._on_wake = None
 
     def start(self, on_wake) -> None:
-        """Start listening. `on_wake` is called (no args) when wake phrase detected."""
+        """Start listening. `on_wake(transcript: str)` is called when wake phrase detected.
+        The transcript includes everything heard in that 2s window (wake phrase + any
+        continuation). Callers can use this to skip a follow-up listen if the user
+        already spoke their request in the same breath: "apex what's on my screen"."""
         self._on_wake = on_wake
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name="WakeWord")
         self._thread.start()
         print(f"[Wake] Listening for: {self.wake_phrases}")
+
+    @property
+    def is_muted(self) -> bool:
+        return bool(getattr(self, "_muted", False))
+
+    def set_muted(self, muted: bool) -> None:
+        self._muted = bool(muted)
 
     def stop(self) -> None:
         self._stop.set()
@@ -75,6 +84,10 @@ class WakeWordListener:
                         except queue.Empty:
                             continue
 
+                    # Muted = discard audio entirely, never transcribe
+                    if self.is_muted:
+                        continue
+
                     audio = np.concatenate(buf, axis=0).flatten()
                     rms = float(np.sqrt(np.mean(audio ** 2)))
                     # Skip transcribing pure silence
@@ -90,7 +103,12 @@ class WakeWordListener:
                     if any(p in text for p in self.wake_phrases):
                         print(f"[Wake] Triggered by: {text!r}")
                         if self._on_wake:
-                            self._on_wake()
+                            try:
+                                # Pass transcript so caller can decide whether to listen further
+                                self._on_wake(text)
+                            except TypeError:
+                                # Backwards compatible with old no-arg callbacks
+                                self._on_wake()
                         # Brief debounce after wake
                         time.sleep(0.5)
         except Exception as e:
