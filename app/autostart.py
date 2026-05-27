@@ -126,15 +126,20 @@ def _windows_install() -> str:
         import winreg  # type: ignore
     except ImportError:
         return "winreg not available — not on Windows?"
+    # Prefer pythonw.exe so login doesn't briefly flash a console window
+    python_exe = _PYTHON
+    pythonw_candidate = python_exe.replace("python.exe", "pythonw.exe")
+    if pythonw_candidate != python_exe and Path(pythonw_candidate).exists():
+        python_exe = pythonw_candidate
     key = winreg.OpenKey(
         winreg.HKEY_CURRENT_USER,
         r"Software\Microsoft\Windows\CurrentVersion\Run",
         0, winreg.KEY_SET_VALUE,
     )
-    value = f'"{_PYTHON}" "{_MAIN_PY}" --resident'
+    value = f'"{python_exe}" "{_MAIN_PY}" --resident'
     winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, value)
     winreg.CloseKey(key)
-    return f"Installed HKCU registry key: {APP_NAME}"
+    return f"Installed HKCU registry key: {APP_NAME} -> {value}"
 
 
 def _windows_uninstall() -> str:
