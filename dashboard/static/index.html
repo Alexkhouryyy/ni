@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Apex Agent · Dashboard</title>
-<link rel="stylesheet" href="/static/styles.css?v=briefing1">
+<link rel="stylesheet" href="/static/styles.css?v=chatux1">
+<script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script src="https://unpkg.com/globe.gl"></script>
@@ -417,6 +418,7 @@
         </select>
       </label>
       <span id="chat-model-msg" class="chat-model-msg"></span>
+      <button type="button" id="chat-clear" class="chat-clear-btn" title="Clear chat history">Clear</button>
     </div>
     <div class="chat-wrap">
       <div id="chat-messages" class="chat-messages"></div>
@@ -475,6 +477,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=briefing1"></script>
+<script src="/static/app.js?v=chatux1"></script>
 </body>
 </html>

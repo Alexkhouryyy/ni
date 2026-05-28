@@ -1079,6 +1079,32 @@ let activeChatId = null;
 let currentAgentBubble = null;
 let currentAgentText = '';
 
+// ============== CHAT HISTORY (sessionStorage) ==============
+const _HIST_KEY = 'apex_chat_history';
+const _HIST_MAX = 30;
+
+function _historyPush(role, text) {
+  try {
+    const arr = JSON.parse(sessionStorage.getItem(_HIST_KEY) || '[]');
+    arr.push({ role, text });
+    if (arr.length > _HIST_MAX) arr.splice(0, arr.length - _HIST_MAX);
+    sessionStorage.setItem(_HIST_KEY, JSON.stringify(arr));
+  } catch(e) {}
+}
+
+function _historyLoad() {
+  try {
+    const arr = JSON.parse(sessionStorage.getItem(_HIST_KEY) || '[]');
+    arr.forEach(m => _appendChatMsg(m.role, m.text, { skipHistory: true }));
+  } catch(e) {}
+}
+
+function _historyClear() {
+  try { sessionStorage.removeItem(_HIST_KEY); } catch(e) {}
+  const msgs = document.getElementById('chat-messages');
+  if (msgs) msgs.innerHTML = '';
+}
+
 function loadChat() {
   const input = document.getElementById('chat-input');
   const sendBtn = document.getElementById('chat-send');
@@ -1102,6 +1128,16 @@ function loadChat() {
     if (q) q.value = text;
     runCouncil();
   });
+  document.getElementById('chat-clear')?.addEventListener('click', _historyClear);
+  // Smart scroll: track if user scrolls up
+  const msgs = document.getElementById('chat-messages');
+  if (msgs) {
+    msgs.addEventListener('scroll', () => {
+      _userScrolledUp = (msgs.scrollHeight - msgs.clientHeight - msgs.scrollTop) > 80;
+    });
+  }
+  // Restore previous session's messages
+  _historyLoad();
 }
 
 // ============== MODEL PICKER ==============
@@ -1141,15 +1177,20 @@ async function refreshModelSelection() {
   try { sel.value = (await api('/api/models')).current; } catch (e) {}
 }
 
-function _appendChatMsg(role, text) {
+// Track whether user has manually scrolled up during a stream
+let _userScrolledUp = false;
+
+function _appendChatMsg(role, text, { skipHistory } = {}) {
   const msgs = document.getElementById('chat-messages');
   if (!msgs) return null;
   const div = document.createElement('div');
   div.className = `chat-msg ${role}`;
+  const rendered = role === 'user' ? escapeHTML(text) : renderMarkdown(text);
   div.innerHTML = `<div class="chat-msg-role">${role === 'user' ? 'You' : 'Agent'}</div>` +
-                  `<div class="chat-msg-content">${escapeHTML(text)}</div>`;
+                  `<div class="chat-msg-content">${rendered}</div>`;
   msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
+  if (!_userScrolledUp) msgs.scrollTop = msgs.scrollHeight;
+  if (!skipHistory) _historyPush(role, text);
   return div;
 }
 
@@ -1161,12 +1202,16 @@ async function sendChat() {
 
   input.value = '';
   input.style.height = 'auto';
+  _userScrolledUp = false;
   _appendChatMsg('user', text);
 
   currentAgentText = '';
-  currentAgentBubble = _appendChatMsg('agent', '');
+  currentAgentBubble = _appendChatMsg('agent', '', { skipHistory: true });
   currentAgentBubble.classList.add('streaming');
   currentAgentBubble.dataset.prompt = text;
+  // Show thinking indicator until first token arrives
+  const _thinkEl = currentAgentBubble.querySelector('.chat-msg-content');
+  if (_thinkEl) _thinkEl.innerHTML = '<span class="chat-thinking">thinking…</span>';
   sendBtn.disabled = true;
 
   // Generate chat_id client-side so WS tokens are routed before POST returns
@@ -1185,17 +1230,27 @@ async function sendChat() {
 
 function _chatAppendToken(delta, chatId) {
   if (activeChatId !== chatId || !currentAgentBubble) return;
+  const firstToken = currentAgentText === '';
   currentAgentText += delta;
   const el = currentAgentBubble.querySelector('.chat-msg-content');
-  if (el) el.textContent = currentAgentText;
+  if (el) {
+    if (firstToken) {
+      // Remove thinking indicator; switch to plain text during streaming
+      el.innerHTML = '';
+    }
+    el.textContent = currentAgentText;
+  }
   const msgs = document.getElementById('chat-messages');
-  if (msgs) msgs.scrollTop = msgs.scrollHeight;
+  if (msgs && !_userScrolledUp) msgs.scrollTop = msgs.scrollHeight;
 }
 
 function _chatFinalize(chatId, response, sessionId, turnIndex) {
   if (activeChatId !== chatId) return;
   if (currentAgentBubble) {
     currentAgentBubble.classList.remove('streaming');
+    // Render final markdown now that streaming is complete
+    const el = currentAgentBubble.querySelector('.chat-msg-content');
+    if (el && currentAgentText) el.innerHTML = renderMarkdown(currentAgentText);
     if (sessionId != null && turnIndex != null) {
       currentAgentBubble.dataset.sessionId = String(sessionId);
       currentAgentBubble.dataset.turnIndex = String(turnIndex);
@@ -1214,6 +1269,8 @@ function _chatFinalize(chatId, response, sessionId, turnIndex) {
         '<span class="cso-icon">⚖</span> Second opinion</button>';
       currentAgentBubble.appendChild(footer);
     }
+    // Persist to session history
+    _historyPush('agent', currentAgentText);
   }
   const spoken = response || currentAgentText;
   currentAgentBubble = null;
@@ -1264,16 +1321,36 @@ document.addEventListener('click', async e => {
 
 function _chatError(error, chatId) {
   if (activeChatId !== chatId) return;
+  const prompt = currentAgentBubble?.dataset.prompt || '';
   if (currentAgentBubble) {
     const el = currentAgentBubble.querySelector('.chat-msg-content');
     if (el) { el.textContent = error; el.classList.add('chat-error-text'); }
     currentAgentBubble.classList.remove('streaming');
+    if (prompt) {
+      const footer = document.createElement('div');
+      footer.className = 'chat-msg-footer';
+      footer.innerHTML = '<button type="button" class="chat-retry-btn">↩ Retry</button>';
+      currentAgentBubble.appendChild(footer);
+    }
     currentAgentBubble = null;
   }
   activeChatId = null;
   const sendBtn = document.getElementById('chat-send');
   if (sendBtn) sendBtn.disabled = false;
 }
+
+// Retry handler — delegated so it works on any error bubble
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.chat-retry-btn');
+  if (!btn || activeChatId) return;
+  const bubble = btn.closest('.chat-msg');
+  const prompt = bubble?.dataset.prompt;
+  if (!prompt) return;
+  bubble.remove();
+  const input = document.getElementById('chat-input');
+  if (input) input.value = prompt;
+  sendChat();
+});
 
 // ============== VOICE ==============
 let mediaRecorder = null;
@@ -1474,7 +1551,7 @@ function _councilAnswer(data) {
   const pill = entry.querySelector('.council-pill');
   if (pill) pill.remove();
   const body = entry.querySelector('.council-entry-body');
-  if (body) body.textContent = data.text;
+  if (body) body.innerHTML = renderMarkdown(data.text || '');
   entry.classList.add('council-entry-done');
 }
 
@@ -1495,11 +1572,11 @@ function _councilDone(data) {
     const dis = (data.disagreement || '').trim();
     const disagreed = dis && dis.toLowerCase() !== 'the council agreed';
     const disBlock = disagreed
-      ? `<div class="council-disagreement"><div class="council-disagreement-head">Where the council split</div><div class="council-disagreement-body">${escapeHTML(dis)}</div></div>`
+      ? `<div class="council-disagreement"><div class="council-disagreement-head">Where the council split</div><div class="council-disagreement-body">${renderMarkdown(dis)}</div></div>`
       : '';
     verdict.innerHTML =
       `<div class="council-verdict-head">Verdict <span class="council-members">${(data.members || []).map(escapeHTML).join(' · ')}</span>${confBadge}</div>` +
-      `<div class="council-verdict-body">${escapeHTML(data.final_answer || '')}</div>` +
+      `<div class="council-verdict-body">${renderMarkdown(data.final_answer || '')}</div>` +
       disBlock;
   }
   // Transcript is normally built live from council_answer events. Only rebuild
