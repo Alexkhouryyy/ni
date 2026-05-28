@@ -1100,3 +1100,28 @@ pre { font-family: 'SF Mono', Menlo, monospace; }
 .login-input:focus { border-color: var(--accent); }
 .login-btn { width: 100%; margin-top: 2px; }
 .login-error { font-size: 12px; color: var(--danger); min-height: 16px; text-align: center; }
+
+/* === Briefing tab === */
+.briefing-form { display: flex; flex-direction: column; gap: 12px; max-width: 480px; }
+.briefing-row { display: flex; align-items: center; gap: 12px; }
+.briefing-label { font-size: 13px; color: var(--text-mute); width: 110px; flex-shrink: 0; }
+.briefing-input {
+  flex: 1; padding: 7px 11px;
+  background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-size: 13px; outline: none;
+}
+.briefing-input:focus { border-color: var(--accent); }
+.briefing-actions { display: flex; gap: 10px; margin-top: 4px; }
+.toggle-switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-track {
+  width: 36px; height: 20px; border-radius: 10px;
+  background: var(--border-strong); transition: background 0.2s;
+  display: flex; align-items: center; padding: 2px;
+}
+.toggle-track::after {
+  content: ''; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform 0.2s;
+}
+.toggle-switch input:checked + .toggle-track { background: var(--accent); }
+.toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }

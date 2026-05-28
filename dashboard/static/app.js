@@ -155,6 +155,7 @@ async function loadTab(tab) {
     reflections: loadReflections,
     telemetry: loadTelemetry,
     replay: loadReplay,
+    briefing: loadBriefing,
     schedule: loadTasks,
     subagents: loadSubagents,
     knowledge: loadKB,
@@ -979,6 +980,67 @@ document.getElementById('revert-btn').addEventListener('click', async () => {
   await api('/api/selfmod/revert', { method: 'POST', body: {} });
   loadSelfMod();
 });
+
+// ============== BRIEFING ==============
+async function loadBriefing() {
+  try {
+    const b = await api('/api/briefing');
+    document.getElementById('briefing-enabled').checked   = b.enabled === 'true' || b.enabled === true;
+    document.getElementById('briefing-time').value        = b.time || '08:00';
+    document.getElementById('briefing-timezone').value    = b.timezone || 'America/New_York';
+    document.getElementById('briefing-location').value    = b.location || '';
+    document.getElementById('briefing-topics').value      = b.news_topics || '';
+
+    const st = document.getElementById('briefing-status');
+    if (b.task) {
+      const last = b.task.last_run
+        ? new Date(b.task.last_run * 1000).toLocaleString()
+        : 'Never';
+      st.innerHTML = `<div class="card-meta">Task ID: <code>${b.task.id}</code></div>
+        <div class="card-meta">Last run: ${last}</div>
+        <div class="card-meta">Run count: ${b.task.run_count}</div>`;
+    } else {
+      st.innerHTML = '<div class="card-meta">No briefing task scheduled yet. Enable and save to activate.</div>';
+    }
+  } catch (e) {
+    document.getElementById('briefing-status').textContent = 'Could not load briefing config.';
+  }
+  // Wire form (once)
+  const form = document.getElementById('briefing-form');
+  if (form._wired) return;
+  form._wired = true;
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = form.querySelector('[type=submit]');
+    btn.textContent = 'Saving…';
+    try {
+      const r = await api('/api/briefing', { method: 'POST', body: {
+        enabled:     document.getElementById('briefing-enabled').checked ? 'true' : 'false',
+        time:        document.getElementById('briefing-time').value,
+        timezone:    document.getElementById('briefing-timezone').value,
+        location:    document.getElementById('briefing-location').value,
+        news_topics: document.getElementById('briefing-topics').value,
+      }});
+      btn.textContent = 'Saved!';
+      setTimeout(() => { btn.textContent = 'Save & schedule'; }, 2000);
+      loadBriefing();
+    } catch (err) {
+      btn.textContent = 'Error — retry';
+    }
+  });
+  document.getElementById('briefing-run-now').addEventListener('click', async () => {
+    const btn = document.getElementById('briefing-run-now');
+    btn.textContent = 'Starting…';
+    btn.disabled = true;
+    try {
+      const r = await api('/api/briefing/run_now', { method: 'POST', body: {} });
+      btn.textContent = 'Running!';
+      setTimeout(() => { btn.textContent = 'Run now'; btn.disabled = false; }, 3000);
+    } catch (err) {
+      btn.textContent = 'Error'; btn.disabled = false;
+    }
+  });
+}
 
 // ============== PHONE ==============
 async function loadPhone() {

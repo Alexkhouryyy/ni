@@ -176,6 +176,13 @@ def main():
             trigger_params={"hour": 3, "minute": 0},
         )
 
+    # Morning briefing — daily spoken digest (weather, news, follow-ups)
+    from agent import briefing as _briefing
+    _briefing.init_db()
+    _briefing_result = _briefing.install_briefing_task()
+    if "scheduled" in _briefing_result:
+        print(f"[Briefing] {_briefing_result}")
+
     # Twilio inbound dispatch — wire agent.run so SMS/voice webhooks have a brain
     from tools import phone as _phone
     def _phone_agent_run(text: str, *, channel_id: str | None = None) -> str:

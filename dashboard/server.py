@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 import config
 from agent import longterm, knowledge, self_mod, goals, orchestrator
 from agent import scheduler as sched
+from agent import briefing as briefing_mod
 from agent import entities as ent_mod
 from agent import reflection as refl_mod
 from agent import telemetry as tel_mod
@@ -642,6 +643,47 @@ async def iot_toggle(request: Request):
     value = bool(body.get("enabled", not iot_state.is_enabled()))
     iot_state.set_enabled(value, source="dashboard")
     return {"ok": True, "enabled": value}
+
+
+# --- Morning Briefing ---
+@app.get("/api/briefing")
+def briefing_get():
+    briefing_mod.init_db()
+    cfg = briefing_mod.get_config()
+    # Find current task info
+    task_info = None
+    from agent import briefing as _bm
+    for task in sched.list_tasks():
+        if task.get("description", "").startswith(_bm._BRIEFING_MARKER):
+            task_info = {"id": task["id"], "last_run": task.get("last_run"), "run_count": task.get("run_count", 0)}
+            break
+    return {**cfg, "task": task_info}
+
+
+@app.post("/api/briefing")
+async def briefing_post(request: Request):
+    body = await request.json()
+    allowed = {"enabled", "time", "timezone", "location", "news_topics"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    result = briefing_mod.reinstall(updates)
+    return {"ok": True, "result": result}
+
+
+@app.post("/api/briefing/run_now")
+async def briefing_run_now():
+    from agent import briefing as _bm
+    cfg = _bm.get_config()
+    prompt = _bm._build_prompt(cfg)
+    # Remove the marker so it reads cleanly
+    prompt = prompt.replace(_bm._BRIEFING_MARKER + "\n", "")
+    if not _agent_ref:
+        return JSONResponse({"error": "agent not ready"}, status_code=503)
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(
+        None,
+        lambda: _agent_ref.run(prompt, include_screenshot=False, channel_id="briefing:manual"),
+    )
+    return {"ok": True, "message": "Briefing running — check Live Feed for output."}
 
 
 # --- Chat ---

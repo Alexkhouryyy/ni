@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Apex Agent · Dashboard</title>
-<link rel="stylesheet" href="/static/styles.css?v=council2">
+<link rel="stylesheet" href="/static/styles.css?v=briefing1">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script src="https://unpkg.com/globe.gl"></script>
@@ -37,6 +37,7 @@
     <button data-tab="replay" class="nav-btn"><span class="icon">▷</span>Replay</button>
 
     <div class="nav-group-label">Automation</div>
+    <button data-tab="briefing" class="nav-btn"><span class="icon">☀</span>Briefing</button>
     <button data-tab="schedule" class="nav-btn"><span class="icon">◷</span>Schedule</button>
     <button data-tab="subagents" class="nav-btn"><span class="icon">⌥</span>Sub-agents</button>
 
@@ -286,6 +287,50 @@
     </div>
   </section>
 
+  <!-- BRIEFING -->
+  <section id="tab-briefing" class="tab">
+    <header class="page-head">
+      <h1>Morning Briefing</h1>
+      <div class="page-sub">Daily spoken digest — weather, news, and follow-ups</div>
+    </header>
+    <div class="panel" id="briefing-panel">
+      <div class="panel-head"><h3>Configuration</h3></div>
+      <form id="briefing-form" class="briefing-form">
+        <label class="briefing-row">
+          <span class="briefing-label">Enabled</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="briefing-enabled">
+            <span class="toggle-track"></span>
+          </label>
+        </label>
+        <label class="briefing-row">
+          <span class="briefing-label">Time</span>
+          <input type="time" id="briefing-time" value="08:00" class="briefing-input">
+        </label>
+        <label class="briefing-row">
+          <span class="briefing-label">Timezone</span>
+          <input type="text" id="briefing-timezone" placeholder="America/New_York" class="briefing-input">
+        </label>
+        <label class="briefing-row">
+          <span class="briefing-label">Location</span>
+          <input type="text" id="briefing-location" placeholder="New York, NY" class="briefing-input">
+        </label>
+        <label class="briefing-row">
+          <span class="briefing-label">News topics</span>
+          <input type="text" id="briefing-topics" placeholder="technology, sports, finance" class="briefing-input">
+        </label>
+        <div class="briefing-actions">
+          <button type="submit" class="btn-primary">Save &amp; schedule</button>
+          <button type="button" id="briefing-run-now">Run now</button>
+        </div>
+      </form>
+    </div>
+    <div class="panel" id="briefing-status-panel" style="margin-top:16px">
+      <div class="panel-head"><h3>Status</h3></div>
+      <div id="briefing-status">—</div>
+    </div>
+  </section>
+
   <!-- SCHEDULE -->
   <section id="tab-schedule" class="tab">
     <header class="page-head"><h1>Scheduled tasks</h1></header>
@@ -430,6 +475,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=planets2"></script>
+<script src="/static/app.js?v=briefing1"></script>
 </body>
 </html>
