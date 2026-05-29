@@ -198,6 +198,14 @@ def run_resident(model_override: Optional[str] = None) -> None:
     except Exception as e:
         logging.error(f"Channel wiring failed: {e}")
 
+    # Telegram long-polling — pulls messages when there's no public webhook URL.
+    if config.TELEGRAM_POLLING:
+        try:
+            from tools import telegram as _tg
+            logging.info(_tg.start_polling())
+        except Exception as e:
+            logging.error(f"Telegram polling failed to start: {e}")
+
     # --- Wake listener ---
     from voice.wake import WakeWordListener
     from voice.stt import listen, warm_up as _stt_warm

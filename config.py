@@ -99,6 +99,10 @@ PHONE_ALLOWED_NUMBERS = [n.strip() for n in os.getenv("PHONE_ALLOWED_NUMBERS", "
 # Telegram bot
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_ALLOWED_CHAT_IDS = [x.strip() for x in os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",") if x.strip()]
+# Long-polling mode: Apex pulls messages via getUpdates instead of receiving a
+# webhook. Set true when you have no public HTTPS URL (laptop / home machine).
+# Leave false if you register a webhook with a public URL.
+TELEGRAM_POLLING = os.getenv("TELEGRAM_POLLING", "false").lower() == "true"
 
 # Image generation (Replicate)
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")

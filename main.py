@@ -188,6 +188,11 @@ def main():
     from tools.channels import wire_channels
     wire_channels(agent)
 
+    # Telegram long-polling — pulls messages when there's no public webhook URL.
+    if config.TELEGRAM_POLLING:
+        from tools import telegram as _tg
+        print(_tg.start_polling())
+
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:
         from agent.awareness import AwarenessMonitor

@@ -15,11 +15,19 @@ Setup:
        curl "https://api.telegram.org/bot{TOKEN}/setWebhook?url=https://your.host/telegram/webhook"
 """
 import json
+import threading
+import time
+import urllib.parse
+import urllib.request
 from typing import Callable, Optional
 
 import config
 
 _agent_run_fn: Optional[Callable] = None
+
+# Long-polling state
+_poll_thread: Optional[threading.Thread] = None
+_poll_stop: Optional[threading.Event] = None
 
 
 def set_agent_run_fn(fn: Callable) -> None:
@@ -71,6 +79,69 @@ def send_message(chat_id: int | str, text: str) -> str:
             return f"[Telegram] API error: {result}"
     except Exception as e:
         return f"[Telegram] send_message failed: {e}"
+
+
+def start_polling() -> str:
+    """Start long-polling getUpdates in a background thread.
+
+    Use this when there is no public HTTPS URL for a webhook (e.g. a laptop or
+    home machine behind NAT). Telegram forbids getUpdates while a webhook is
+    set, so we delete any existing webhook first. Idempotent: a second call
+    while already polling is a no-op.
+    """
+    global _poll_thread, _poll_stop
+    if not is_configured():
+        return "[Telegram] TELEGRAM_BOT_TOKEN not configured."
+    if _poll_thread is not None and _poll_thread.is_alive():
+        return "[Telegram] already polling."
+    _poll_stop = threading.Event()
+    _poll_thread = threading.Thread(
+        target=_poll_loop, args=(_poll_stop,), daemon=True, name="TelegramPoll"
+    )
+    _poll_thread.start()
+    return "[Telegram] long-polling started."
+
+
+def stop_polling() -> None:
+    if _poll_stop is not None:
+        _poll_stop.set()
+
+
+def _poll_loop(stop: threading.Event) -> None:
+    # getUpdates only works when no webhook is registered.
+    try:
+        urllib.request.urlopen(
+            f"https://api.telegram.org/bot{_token()}/deleteWebhook", timeout=10
+        )
+    except Exception:
+        pass
+
+    offset: Optional[int] = None
+    print("[Telegram] Polling for messages...")
+    while not stop.is_set():
+        try:
+            params = {"timeout": 50}
+            if offset is not None:
+                params["offset"] = offset
+            url = (
+                f"https://api.telegram.org/bot{_token()}/getUpdates?"
+                + urllib.parse.urlencode(params)
+            )
+            with urllib.request.urlopen(url, timeout=60) as resp:
+                data = json.loads(resp.read())
+            if not data.get("ok"):
+                time.sleep(3)
+                continue
+            for update in data.get("result", []):
+                offset = update.get("update_id", 0) + 1
+                try:
+                    dispatch_inbound(update)
+                except Exception as e:
+                    print(f"[Telegram] dispatch error: {e}")
+        except Exception:
+            # Network hiccup / timeout — back off briefly and retry.
+            if not stop.is_set():
+                time.sleep(3)
 
 
 def dispatch_inbound(update: dict) -> Optional[str]:
