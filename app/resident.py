@@ -188,6 +188,16 @@ def run_resident(model_override: Optional[str] = None) -> None:
         except Exception as e:
             logging.error(f"Dashboard failed to start: {e}")
 
+    # Wire messaging channels to the agent so inbound webhooks (WhatsApp, Telegram,
+    # SMS, etc.) actually reach Apex in always-on mode. Without this, the dashboard
+    # webhooks are live but every inbound message gets "Agent not ready yet."
+    try:
+        from tools.channels import wire_channels
+        wire_channels(agent)
+        logging.info("Messaging channels wired to agent.")
+    except Exception as e:
+        logging.error(f"Channel wiring failed: {e}")
+
     # --- Wake listener ---
     from voice.wake import WakeWordListener
     from voice.stt import listen, warm_up as _stt_warm

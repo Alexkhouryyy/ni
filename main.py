@@ -184,73 +184,9 @@ def main():
     if "scheduled" in _briefing_result:
         print(f"[Briefing] {_briefing_result}")
 
-    # Twilio inbound dispatch — wire agent.run so SMS/voice webhooks have a brain
-    from tools import phone as _phone
-    def _phone_agent_run(text: str, *, channel_id: str | None = None) -> str:
-        try:
-            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
-        except Exception as e:
-            return f"Agent error: {e}"
-    _phone.set_agent_run_fn(_phone_agent_run)
-
-    # Telegram inbound dispatch
-    from tools import telegram as _telegram
-    def _telegram_agent_run(text: str, *, channel_id: str | None = None) -> str:
-        try:
-            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
-        except Exception as e:
-            return f"Agent error: {e}"
-    _telegram.set_agent_run_fn(_telegram_agent_run)
-
-    # Discord inbound dispatch
-    from tools import discord as _discord
-    def _discord_agent_run(text: str, *, channel_id: str | None = None) -> str:
-        try:
-            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
-        except Exception as e:
-            return f"Agent error: {e}"
-    _discord.set_agent_run_fn(_discord_agent_run)
-
-    # Slack inbound dispatch
-    from tools import slack as _slack
-    def _slack_agent_run(text: str, *, channel_id: str | None = None) -> str:
-        try:
-            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
-        except Exception as e:
-            return f"Agent error: {e}"
-    _slack.set_agent_run_fn(_slack_agent_run)
-
-    # WhatsApp inbound dispatch
-    from tools import whatsapp as _whatsapp
-    def _whatsapp_agent_run(text: str, *, channel_id: str | None = None) -> str:
-        try:
-            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
-        except Exception as e:
-            return f"Agent error: {e}"
-    _whatsapp.set_agent_run_fn(_whatsapp_agent_run)
-
-    # Signal inbound dispatch
-    from tools import signal as _signal
-    def _signal_agent_run(text: str, *, channel_id: str | None = None) -> str:
-        try:
-            return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
-        except Exception as e:
-            return f"Agent error: {e}"
-    _signal.set_agent_run_fn(_signal_agent_run)
-
-    # IoT inbound dispatch (only wired when env flag is set)
-    if config.IOT_ENABLED:
-        from agent import iot as _iot_state
-        _iot_state.init_db()
-        from tools import iot as _iot
-        def _iot_agent_run(text: str, *, channel_id: str | None = None) -> str:
-            try:
-                return agent.run(text, include_screenshot=False, use_thinking=False, channel_id=channel_id)
-            except Exception as e:
-                return f"Agent error: {e}"
-        _iot.set_agent_run_fn(_iot_agent_run)
-        if not config.IOT_WEBHOOK_SECRET:
-            print("[IoT] WARNING: IOT_WEBHOOK_SECRET not set — inbound webhooks are unauthenticated.")
+    # Wire every messaging channel's inbound dispatch to this agent.
+    from tools.channels import wire_channels
+    wire_channels(agent)
 
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:

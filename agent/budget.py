@@ -14,7 +14,11 @@ _DEFAULTS = {
 }
 
 
+_initialized = False
+
+
 def init_db() -> None:
+    global _initialized
     with longterm._conn() as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS budget_config (
@@ -28,9 +32,18 @@ def init_db() -> None:
                 (k, v),
             )
         c.commit()
+    _initialized = True
+
+
+def _ensure_init() -> None:
+    """Lazily create the table so callers (tests, partial boots) never hit a
+    missing-table error if init_db() wasn't run during startup."""
+    if not _initialized:
+        init_db()
 
 
 def get_config() -> dict:
+    _ensure_init()
     with longterm._conn() as c:
         rows = c.execute("SELECT key, value FROM budget_config").fetchall()
     cfg = {r[0]: r[1] for r in rows}
@@ -42,6 +55,7 @@ def get_config() -> dict:
 
 
 def set_config(updates: dict) -> None:
+    _ensure_init()
     with longterm._conn() as c:
         for k, v in updates.items():
             c.execute(
