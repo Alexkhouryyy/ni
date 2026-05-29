@@ -63,6 +63,7 @@ def main():
     from agent.core import AgentCore
     from agent import longterm, telemetry
     longterm.init_db()
+    from agent import budget as _budget_mod; _budget_mod.init_db()
     session_id = longterm.start_session()
     telemetry.set_session(session_id)
     print(f"[Memory] Session #{session_id} started. DB: {longterm.DB_PATH}")

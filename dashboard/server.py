@@ -29,6 +29,7 @@ from agent import telemetry as tel_mod
 from agent import feedback as fb_mod
 from agent import outcomes as outcomes_mod
 from agent import rollback as rollback_mod
+from agent import budget as budget_mod
 from tools import phone as phone_mod
 from tools import telegram as telegram_mod
 from tools import discord as discord_mod
@@ -391,6 +392,24 @@ def telemetry_summary(days: int = 7):
 @app.get("/api/telemetry/sessions")
 def telemetry_sessions(limit: int = 30):
     return tel_mod.list_recent_sessions(limit=limit)
+
+
+@app.get("/api/budget")
+def budget_get():
+    cfg = budget_mod.get_config()
+    return {
+        **cfg,
+        "today_spend":   budget_mod.today_spend(),
+        "session_spend": budget_mod.session_spend(),
+    }
+
+
+@app.post("/api/budget")
+async def budget_post(request: Request):
+    body = await request.json()
+    allowed = {"daily_usd", "session_usd", "enabled"}
+    budget_mod.set_config({k: v for k, v in body.items() if k in allowed})
+    return {"ok": True}
 
 
 @app.get("/api/replay/{session_id}")

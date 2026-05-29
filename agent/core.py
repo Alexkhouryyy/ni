@@ -16,6 +16,7 @@ from agent import reflection
 from agent import telemetry
 from agent import resilience
 from agent import skills as skills_mod
+from agent import budget as _budget
 from tools import computer, bash, research, files, browser, repl, vision, phone, image_gen, telegram, discord, slack, whatsapp, signal
 
 SYSTEM_PROMPT = """You are an advanced AI agent with voice interface, computer vision, computer control, \
@@ -1512,6 +1513,12 @@ class AgentCore:
             except Exception:
                 pass
 
+            # Spend-cap pre-flight check
+            cap_msg = _budget.check()
+            if cap_msg:
+                memory.add("assistant", cap_msg)
+                return cap_msg
+
             # Agentic tool-use loop
             max_iterations = max_iterations if max_iterations is not None else config.MAX_ITERATIONS
             iteration = 0
@@ -1524,6 +1531,13 @@ class AgentCore:
 
                 if cancel_event is not None and cancel_event.is_set():
                     break
+
+                # Per-iteration spend check (catches mid-turn overruns)
+                if iteration > 1:
+                    cap_msg = _budget.check()
+                    if cap_msg:
+                        memory.add("assistant", cap_msg)
+                        return cap_msg
 
                 kwargs = dict(
                     model=self._model,

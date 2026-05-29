@@ -799,6 +799,7 @@ document.getElementById('refl-check-rollback')?.addEventListener('click', async 
 // ============== TELEMETRY ==============
 let telCostChart = null, telModelChart = null;
 async function loadTelemetry() {
+  loadBudget();
   const days = parseInt(document.getElementById('tel-window').value);
   const t = await api('/api/telemetry?days=' + days);
   document.getElementById('tel-cost').textContent = fmtCost(t.total_cost_usd);
@@ -846,6 +847,42 @@ async function loadTelemetry() {
 }
 document.getElementById('tel-refresh').addEventListener('click', loadTelemetry);
 document.getElementById('tel-window').addEventListener('change', loadTelemetry);
+
+// ============== BUDGET ==============
+async function loadBudget() {
+  const b = await api('/api/budget');
+  const pct = (spent, limit) => limit > 0 ? Math.min(spent / limit * 100, 100).toFixed(1) : 0;
+  const lbl = (spent, limit) => '$' + spent.toFixed(2) + ' / $' + limit.toFixed(2);
+
+  const dailyBar = document.getElementById('budget-bar-daily');
+  const sessBar  = document.getElementById('budget-bar-session');
+  dailyBar.style.width = pct(b.today_spend, b.daily_usd) + '%';
+  sessBar.style.width  = pct(b.session_spend, b.session_usd) + '%';
+  dailyBar.classList.toggle('over', b.daily_usd > 0 && b.today_spend / b.daily_usd >= 0.9);
+  sessBar.classList.toggle('over',  b.session_usd > 0 && b.session_spend / b.session_usd >= 0.9);
+  document.getElementById('budget-label-daily').textContent   = lbl(b.today_spend, b.daily_usd);
+  document.getElementById('budget-label-session').textContent = lbl(b.session_spend, b.session_usd);
+
+  const checkbox = document.getElementById('budget-enabled');
+  checkbox.checked = b.enabled;
+  document.getElementById('budget-enabled-label').textContent = b.enabled ? 'Enabled' : 'Disabled';
+  document.getElementById('budget-daily-input').value   = b.daily_usd;
+  document.getElementById('budget-session-input').value = b.session_usd;
+}
+
+document.getElementById('budget-enabled').addEventListener('change', async (e) => {
+  await api('/api/budget', { method: 'POST', body: JSON.stringify({ enabled: e.target.checked }) });
+  document.getElementById('budget-enabled-label').textContent = e.target.checked ? 'Enabled' : 'Disabled';
+});
+
+document.getElementById('budget-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const daily   = parseFloat(document.getElementById('budget-daily-input').value);
+  const session = parseFloat(document.getElementById('budget-session-input').value);
+  if (isNaN(daily) || isNaN(session) || daily < 0 || session < 0) return;
+  await api('/api/budget', { method: 'POST', body: JSON.stringify({ daily_usd: daily, session_usd: session }) });
+  await loadBudget();
+});
 
 // ============== REPLAY ==============
 async function loadReplay() {

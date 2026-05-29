@@ -250,6 +250,33 @@
       </select>
       <button id="tel-refresh">Refresh</button>
     </div>
+    <div class="panel" id="budget-panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <h3>Spend limits</h3>
+        <label class="toggle-row">
+          <span class="toggle-label" id="budget-enabled-label">Enabled</span>
+          <input type="checkbox" id="budget-enabled" checked>
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+      </div>
+      <div class="budget-meters">
+        <div class="budget-row">
+          <span class="budget-name">Today</span>
+          <div class="budget-bar"><div class="budget-fill" id="budget-bar-daily"></div></div>
+          <span class="budget-amount" id="budget-label-daily">$0.00 / $5.00</span>
+        </div>
+        <div class="budget-row">
+          <span class="budget-name">Session</span>
+          <div class="budget-bar"><div class="budget-fill" id="budget-bar-session"></div></div>
+          <span class="budget-amount" id="budget-label-session">$0.00 / $2.00</span>
+        </div>
+      </div>
+      <form id="budget-form" class="controls" style="margin-top:12px">
+        <input type="number" id="budget-daily-input" step="0.50" min="0" placeholder="Daily cap $" style="width:130px">
+        <input type="number" id="budget-session-input" step="0.25" min="0" placeholder="Session cap $" style="width:130px">
+        <button type="submit" class="primary-btn">Save limits</button>
+      </form>
+    </div>
     <div class="stat-grid">
       <div class="stat-card"><div class="stat-label">Total cost</div><div class="stat-value" id="tel-cost">—</div></div>
       <div class="stat-card"><div class="stat-label">Total calls</div><div class="stat-value" id="tel-calls">—</div></div>

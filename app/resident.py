@@ -169,6 +169,7 @@ def run_resident(model_override: Optional[str] = None) -> None:
     knowledge.init_db()
     goals.init_db()
     fb_mod.init_db()
+    from agent import budget as _budget_mod; _budget_mod.init_db()
 
     # Scheduler — pass a thin speak that goes through the state machine
     state = ResidentState()
