@@ -1687,11 +1687,39 @@ let _apexState = 'idle'; // idle | thinking | speaking
 
 function _setApexState(state) {
   _apexState = state;
+  window.__apexState = state;   // consumed by the 3D avatar module
   const pill = document.getElementById('apex-state-pill');
   if (pill) {
     pill.textContent = state;
     pill.className = 'apex-state-pill apex-state-' + state;
   }
+}
+
+// Start the 3D Ready Player Me face; fall back to the 2D canvas if three.js
+// or the avatar GLB fails to load.
+let _avatar2dStarted = false;
+function _ensureApexFace() {
+  if (window.ApexAvatar?.ready || _avatar2dStarted) return;
+  let tries = 0;
+  const tick = () => {
+    if (window.ApexAvatar && !window.ApexAvatar.failed) {
+      try { window.ApexAvatar.start(); } catch (e) {}
+      if (window.ApexAvatar.ready) return;
+    }
+    if (window.ApexAvatar?.failed) return _start2DFallback();
+    if (++tries < 50) setTimeout(tick, 150);
+    else _start2DFallback();   // module never loaded (offline, blocked CDN)
+  };
+  tick();
+}
+function _start2DFallback() {
+  if (_avatar2dStarted) return;
+  _avatar2dStarted = true;
+  const d3 = document.getElementById('apex-avatar-3d');
+  const c2 = document.getElementById('apex-avatar');
+  if (d3) d3.style.display = 'none';
+  if (c2) c2.style.display = 'block';
+  _startApexAvatar();
 }
 
 async function loadCamera() {
@@ -1721,7 +1749,7 @@ async function loadCamera() {
   _updateCameraStatus(data.enabled);
   if (data.enabled) _startCameraFeed();
 
-  _startApexAvatar();
+  _ensureApexFace();
 }
 
 function _updateCameraStatus(enabled) {
@@ -1794,6 +1822,7 @@ function _attachLipSync(audioEl) {
 
   const buf = new Uint8Array(analyser.frequencyBinCount);
   _lipSyncActive = true;
+  window.__apexAudioActive = true;
 
   function sample() {
     if (!_lipSyncActive) return;
@@ -1803,14 +1832,17 @@ function _attachLipSync(audioEl) {
     for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
     const rms = Math.sqrt(sum / buf.length);
     _apexMouth = Math.min(1, rms * 3.2);   // scale up — speech RMS is small
+    window.__apexMouth = _apexMouth;       // consumed by 2D + 3D avatars
     _lipSyncRaf = requestAnimationFrame(sample);
   }
   sample();
 
   const stop = () => {
     _lipSyncActive = false;
+    window.__apexAudioActive = false;
     if (_lipSyncRaf) cancelAnimationFrame(_lipSyncRaf);
     _apexMouth = 0;
+    window.__apexMouth = 0;
     _setApexState('idle');
   };
   audioEl.addEventListener('ended', stop);
