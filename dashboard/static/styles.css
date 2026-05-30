@@ -1283,6 +1283,49 @@ pre.md-pre code { background: none; border: none; padding: 0; }
   align-items: center;
   justify-content: center;
 }
+
+/* ---- Living portrait avatar (user's Apex render) ---- */
+.apex-portrait {
+  position: relative;
+  width: 320px;
+  height: 380px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #0a1322 0%, #04060d 75%);
+  overflow: hidden;
+}
+.apex-portrait-aura {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  width: 230px;
+  height: 230px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(95,216,255,0.55) 0%, rgba(95,216,255,0.18) 40%, rgba(120,90,255,0.06) 65%, transparent 75%);
+  filter: blur(8px);
+  opacity: 0.35;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.apex-portrait-img {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  z-index: 1;
+  animation: apex-breathe 6s ease-in-out infinite;
+  will-change: transform, filter;
+}
+.apex-portrait-img.apex-portrait-speaking {
+  animation: apex-breathe 3.2s ease-in-out infinite;
+}
+@keyframes apex-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-5px) scale(1.012); }
+}
 .apex-avatar-3d canvas { display: block; }
 .apex-avatar-loading {
   position: absolute;

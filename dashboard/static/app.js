@@ -1695,11 +1695,87 @@ function _setApexState(state) {
   }
 }
 
+// Avatar priority chain:
+//   1. Custom portrait image (dashboard/static/apex/apex.png|jpg) — a living,
+//      voice-reactive render of Apex (the user's own art)
+//   2. Ready Player Me 3D head (three.js)
+//   3. 2D canvas face (always works, no network)
+let _avatarChosen = false;
+const _PORTRAIT_SRCS = ['/static/apex/apex.png', '/static/apex/apex.jpg', '/static/apex/apex.webp'];
+
+function _ensureApexFace() {
+  if (_avatarChosen) return;
+  _tryPortrait(0);
+}
+
+function _tryPortrait(i) {
+  if (_avatarChosen) return;
+  if (i >= _PORTRAIT_SRCS.length) return _try3DFace();   // no portrait → 3D
+  const probe = new Image();
+  probe.onload = () => { if (!_avatarChosen) _enablePortrait(_PORTRAIT_SRCS[i]); };
+  probe.onerror = () => _tryPortrait(i + 1);
+  probe.src = _PORTRAIT_SRCS[i] + '?cb=' + Date.now();
+}
+
+function _enablePortrait(src) {
+  _avatarChosen = true;
+  const stage = document.getElementById('apex-portrait');
+  const img = document.getElementById('apex-portrait-img');
+  const d3 = document.getElementById('apex-avatar-3d');
+  const c2 = document.getElementById('apex-avatar');
+  if (d3) d3.style.display = 'none';
+  if (c2) c2.style.display = 'none';
+  if (img) img.src = src;
+  if (stage) stage.style.display = 'flex';
+  _startPortraitLoop();
+}
+
+// Voice-reactive "living portrait": the aura behind Apex swells and brightens
+// with its real speaking amplitude; the image breathes via CSS.
+let _portraitCur = 0;
+function _startPortraitLoop() {
+  const aura = document.getElementById('apex-portrait-aura');
+  const img = document.getElementById('apex-portrait-img');
+  const stage = document.getElementById('apex-portrait');
+  let last = null;
+  function loop(ts) {
+    if (!stage || stage.style.display === 'none') { requestAnimationFrame(loop); return; }
+    const dt = last === null ? 0 : Math.min(0.05, (ts - last) / 1000);
+    last = ts;
+    const t = ts / 1000;
+    const st = window.__apexState || 'idle';
+    let target;
+    if (st === 'speaking') {
+      target = window.__apexAudioActive
+        ? (window.__apexMouth || 0)
+        : 0.3 + 0.35 * Math.abs(Math.sin(t * 8));
+    } else if (st === 'thinking') {
+      target = 0.12 + 0.08 * Math.sin(t * 3);
+    } else {
+      target = 0.1 + 0.05 * Math.sin(t * 1.1);   // gentle idle pulse
+    }
+    _portraitCur += (target - _portraitCur) * Math.min(1, dt * 16 || 0.3);
+    if (aura) {
+      aura.style.opacity = (0.28 + 0.62 * _portraitCur).toFixed(3);
+      aura.style.transform = `translate(-50%,-50%) scale(${(1 + 0.22 * _portraitCur).toFixed(3)})`;
+    }
+    if (img) {
+      img.style.filter = `brightness(${(1 + 0.18 * _portraitCur).toFixed(3)}) saturate(${(1 + 0.25 * _portraitCur).toFixed(3)})`;
+      img.classList.toggle('apex-portrait-speaking', st === 'speaking');
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
 // Start the 3D Ready Player Me face; fall back to the 2D canvas if three.js
 // or the avatar GLB fails to load.
 let _avatar2dStarted = false;
-function _ensureApexFace() {
-  if (window.ApexAvatar?.ready || _avatar2dStarted) return;
+function _try3DFace() {
+  if (_avatarChosen) return;
+  _avatarChosen = true;
+  const d3 = document.getElementById('apex-avatar-3d');
+  if (d3) d3.style.display = 'flex';
   let tries = 0;
   const tick = () => {
     if (window.ApexAvatar && !window.ApexAvatar.failed) {

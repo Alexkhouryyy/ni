@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Apex Agent · Dashboard</title>
-<link rel="stylesheet" href="/static/styles.css?v=vision3">
+<link rel="stylesheet" href="/static/styles.css?v=vision4">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -448,7 +448,11 @@
           <span class="vision-card-label">Apex</span>
           <span class="apex-state-pill" id="apex-state-pill">idle</span>
         </div>
-        <div id="apex-avatar-3d" class="apex-avatar-3d">
+        <div id="apex-portrait" class="apex-portrait" style="display:none">
+          <div class="apex-portrait-aura" id="apex-portrait-aura"></div>
+          <img id="apex-portrait-img" class="apex-portrait-img" alt="Apex">
+        </div>
+        <div id="apex-avatar-3d" class="apex-avatar-3d" style="display:none">
           <div class="apex-avatar-loading" id="apex-avatar-loading">Loading Apex…</div>
         </div>
         <canvas id="apex-avatar" width="320" height="320" style="display:none"></canvas>
@@ -563,7 +567,7 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=vision3"></script>
+<script src="/static/app.js?v=vision4"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
 </body>
 </html>
