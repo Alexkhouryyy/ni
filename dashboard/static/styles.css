@@ -1322,6 +1322,18 @@ pre.md-pre code { background: none; border: none; padding: 0; }
 .apex-portrait-img.apex-portrait-speaking {
   animation: apex-breathe 3.2s ease-in-out infinite;
 }
+.apex-portrait-video {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  z-index: 1;
+  animation: apex-breathe 6s ease-in-out infinite;
+  will-change: transform, filter;
+}
+.apex-portrait-video.apex-portrait-speaking {
+  animation: apex-breathe 3.2s ease-in-out infinite;
+}
 @keyframes apex-breathe {
   0%, 100% { transform: translateY(0) scale(1); }
   50%      { transform: translateY(-5px) scale(1.012); }

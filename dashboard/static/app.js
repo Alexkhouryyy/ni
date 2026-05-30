@@ -1701,11 +1701,39 @@ function _setApexState(state) {
 //   2. Ready Player Me 3D head (three.js)
 //   3. 2D canvas face (always works, no network)
 let _avatarChosen = false;
-const _PORTRAIT_SRCS = ['/static/apex/apex.png', '/static/apex/apex.jpg', '/static/apex/apex.webp'];
+const _PORTRAIT_VIDEOS = ['/static/apex/apex.mp4', '/static/apex/apex.webm'];
+const _PORTRAIT_SRCS   = ['/static/apex/apex.png',  '/static/apex/apex.jpg', '/static/apex/apex.webp'];
 
 function _ensureApexFace() {
   if (_avatarChosen) return;
-  _tryPortrait(0);
+  _tryVideo(0);
+}
+
+// Check for a looping video first — more alive than a still image.
+function _tryVideo(i) {
+  if (_avatarChosen) return;
+  if (i >= _PORTRAIT_VIDEOS.length) return _tryPortrait(0);
+  const src = _PORTRAIT_VIDEOS[i] + '?cb=' + Date.now();
+  const v = document.createElement('video');
+  v.preload = 'metadata';
+  v.onloadedmetadata = () => { if (!_avatarChosen) _enableVideo(_PORTRAIT_VIDEOS[i]); };
+  v.onerror = () => _tryVideo(i + 1);
+  v.src = src;
+}
+
+function _enableVideo(src) {
+  _avatarChosen = true;
+  const stage = document.getElementById('apex-portrait');
+  const vid = document.getElementById('apex-portrait-video');
+  const img = document.getElementById('apex-portrait-img');
+  const d3 = document.getElementById('apex-avatar-3d');
+  const c2 = document.getElementById('apex-avatar');
+  if (d3) d3.style.display = 'none';
+  if (c2) c2.style.display = 'none';
+  if (img) img.style.display = 'none';
+  if (vid) { vid.src = src; vid.style.display = 'block'; }
+  if (stage) stage.style.display = 'flex';
+  _startPortraitLoop(vid);
 }
 
 function _tryPortrait(i) {
@@ -1727,16 +1755,17 @@ function _enablePortrait(src) {
   if (c2) c2.style.display = 'none';
   if (img) img.src = src;
   if (stage) stage.style.display = 'flex';
-  _startPortraitLoop();
+  _startPortraitLoop(null);
 }
 
 // Voice-reactive "living portrait": the aura behind Apex swells and brightens
-// with its real speaking amplitude; the image breathes via CSS.
+// with its real speaking amplitude; the image/video breathes via CSS + filter.
 let _portraitCur = 0;
-function _startPortraitLoop() {
-  const aura = document.getElementById('apex-portrait-aura');
-  const img = document.getElementById('apex-portrait-img');
+function _startPortraitLoop(videoEl) {
+  const aura  = document.getElementById('apex-portrait-aura');
+  const img   = document.getElementById('apex-portrait-img');
   const stage = document.getElementById('apex-portrait');
+  const vid   = videoEl || null;
   let last = null;
   function loop(ts) {
     if (!stage || stage.style.display === 'none') { requestAnimationFrame(loop); return; }
@@ -1752,15 +1781,19 @@ function _startPortraitLoop() {
     } else if (st === 'thinking') {
       target = 0.12 + 0.08 * Math.sin(t * 3);
     } else {
-      target = 0.1 + 0.05 * Math.sin(t * 1.1);   // gentle idle pulse
+      target = 0.1 + 0.05 * Math.sin(t * 1.1);
     }
     _portraitCur += (target - _portraitCur) * Math.min(1, dt * 16 || 0.3);
     if (aura) {
       aura.style.opacity = (0.28 + 0.62 * _portraitCur).toFixed(3);
       aura.style.transform = `translate(-50%,-50%) scale(${(1 + 0.22 * _portraitCur).toFixed(3)})`;
     }
-    if (img) {
-      img.style.filter = `brightness(${(1 + 0.18 * _portraitCur).toFixed(3)}) saturate(${(1 + 0.25 * _portraitCur).toFixed(3)})`;
+    const filterVal = `brightness(${(1 + 0.18 * _portraitCur).toFixed(3)}) saturate(${(1 + 0.25 * _portraitCur).toFixed(3)})`;
+    if (vid) {
+      vid.style.filter = filterVal;
+      vid.classList.toggle('apex-portrait-speaking', st === 'speaking');
+    } else if (img) {
+      img.style.filter = filterVal;
       img.classList.toggle('apex-portrait-speaking', st === 'speaking');
     }
     requestAnimationFrame(loop);
