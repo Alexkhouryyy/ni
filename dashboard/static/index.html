@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Apex Agent · Dashboard</title>
-<link rel="stylesheet" href="/static/styles.css?v=chatux1">
+<link rel="stylesheet" href="/static/styles.css?v=vision1">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -46,6 +46,7 @@
     <button data-tab="knowledge" class="nav-btn"><span class="icon">≡</span>Knowledge base</button>
     <button data-tab="selfmod" class="nav-btn"><span class="icon">✎</span>Self-mod</button>
     <button data-tab="phone" class="nav-btn"><span class="icon">☎</span>Phone</button>
+    <button data-tab="camera" class="nav-btn"><span class="icon">◉</span>Vision</button>
   </nav>
 
   <div class="sidebar-footer">
@@ -425,6 +426,53 @@
   </section>
 
 
+  <!-- CAMERA / VISION -->
+  <section id="tab-camera" class="tab">
+    <header class="page-head">
+      <h1>Vision</h1>
+      <div class="page-sub">Apex sees you — toggle the webcam and watch the agent avatar</div>
+    </header>
+
+    <div class="vision-layout">
+      <!-- Apex avatar -->
+      <div class="vision-card">
+        <div class="vision-card-head">
+          <span class="vision-card-label">Apex</span>
+          <span class="apex-state-pill" id="apex-state-pill">idle</span>
+        </div>
+        <canvas id="apex-avatar" width="320" height="320"></canvas>
+      </div>
+
+      <!-- User webcam -->
+      <div class="vision-card">
+        <div class="vision-card-head">
+          <span class="vision-card-label">You</span>
+          <div class="vision-controls">
+            <span id="camera-status-text" class="camera-status-label">Camera off</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="camera-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="webcam-frame">
+          <div class="webcam-placeholder" id="webcam-placeholder">
+            <span class="webcam-placeholder-icon">◉</span>
+            <span>Camera disabled</span>
+            <span class="webcam-placeholder-hint">Enable the toggle so Apex can see you</span>
+          </div>
+          <img id="webcam-img" class="webcam-img" alt="Live webcam feed">
+        </div>
+        <div class="webcam-meta" id="webcam-meta"></div>
+      </div>
+    </div>
+
+    <div class="panel vision-help" id="camera-install-hint" style="display:none">
+      opencv-python is not installed. Run: <code>pip install opencv-python</code>
+    </div>
+  </section>
+
+
   <!-- CHAT -->
   <section id="tab-chat" class="tab">
     <header class="page-head">
@@ -504,6 +552,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=chatux1"></script>
+<script src="/static/app.js?v=vision1"></script>
 </body>
 </html>

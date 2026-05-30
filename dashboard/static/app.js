@@ -117,9 +117,9 @@ function connectWS() {
     if (msg.type === 'snapshot' && msg.data?.events_recent) {
       msg.data.events_recent.forEach(e => addFeedItem(e));
     }
-    if (msg.type === 'chat_token') _chatAppendToken(msg.delta, msg.chat_id);
-    if (msg.type === 'chat_done')  _chatFinalize(msg.chat_id, msg.response, msg.session_id, msg.turn_index);
-    if (msg.type === 'chat_error') _chatError(msg.error, msg.chat_id);
+    if (msg.type === 'chat_token') { _chatAppendToken(msg.delta, msg.chat_id); _setApexState('speaking'); }
+    if (msg.type === 'chat_done')  { _chatFinalize(msg.chat_id, msg.response, msg.session_id, msg.turn_index); _setApexState('idle'); }
+    if (msg.type === 'chat_error') { _chatError(msg.error, msg.chat_id); _setApexState('idle'); }
     if (msg.type === 'council_progress')    _councilProgress(msg.message);
     if (msg.type === 'council_round_start') _councilRoundStart(msg.round, msg.members);
     if (msg.type === 'council_answer')      _councilAnswer(msg);
@@ -161,6 +161,7 @@ async function loadTab(tab) {
     knowledge: loadKB,
     selfmod: loadSelfMod,
     phone: loadPhone,
+    camera: loadCamera,
     chat: loadChat,
     council: loadCouncil,
   };
@@ -181,6 +182,7 @@ const FEATURES = [
   { tab: 'knowledge',   icon: '≡', label: 'Knwl Base' },
   { tab: 'selfmod',     icon: '✎', label: 'Self-Mod' },
   { tab: 'phone',       icon: '☎', label: 'Phone' },
+  { tab: 'camera',      icon: '◉', label: 'Vision' },
 ];
 
 // World hub coordinates [lat, lng] — agent activity lights these up
@@ -1242,6 +1244,7 @@ async function sendChat() {
   _userScrolledUp = false;
   _appendChatMsg('user', text);
 
+  _setApexState('thinking');
   currentAgentText = '';
   currentAgentBubble = _appendChatMsg('agent', '', { skipHistory: true });
   currentAgentBubble.classList.add('streaming');
@@ -1665,3 +1668,225 @@ async function boot() {
   loadTab('overview');
 }
 boot();
+
+// ========================== VISION / CAMERA ==========================
+
+let _cameraFeedInterval = null;
+let _apexAvatarRaf = null;
+let _apexState = 'idle'; // idle | thinking | speaking
+
+function _setApexState(state) {
+  _apexState = state;
+  const pill = document.getElementById('apex-state-pill');
+  if (pill) {
+    pill.textContent = state;
+    pill.className = 'apex-state-pill apex-state-' + state;
+  }
+}
+
+async function loadCamera() {
+  let data;
+  try {
+    data = await api('/api/camera/status');
+  } catch (e) { return; }
+
+  const toggle = document.getElementById('camera-toggle');
+  const hint = document.getElementById('camera-install-hint');
+
+  if (hint) hint.style.display = data.cv2_available ? 'none' : 'block';
+
+  if (toggle && !toggle._wired) {
+    toggle._wired = true;
+    toggle.addEventListener('change', async () => {
+      try {
+        const r = await api('/api/camera/toggle', { method: 'POST', body: { enabled: toggle.checked } });
+        _updateCameraStatus(r.enabled);
+        if (r.enabled) _startCameraFeed();
+        else _stopCameraFeed();
+      } catch (e) { toggle.checked = !toggle.checked; }
+    });
+  }
+
+  if (toggle) toggle.checked = data.enabled;
+  _updateCameraStatus(data.enabled);
+  if (data.enabled) _startCameraFeed();
+
+  _startApexAvatar();
+}
+
+function _updateCameraStatus(enabled) {
+  const el = document.getElementById('camera-status-text');
+  if (el) el.textContent = enabled ? 'Camera on' : 'Camera off';
+}
+
+function _startCameraFeed() {
+  _stopCameraFeed();
+  _fetchCameraFrame();
+  _cameraFeedInterval = setInterval(_fetchCameraFrame, 2000);
+}
+
+function _stopCameraFeed() {
+  if (_cameraFeedInterval) { clearInterval(_cameraFeedInterval); _cameraFeedInterval = null; }
+  const img = document.getElementById('webcam-img');
+  const ph  = document.getElementById('webcam-placeholder');
+  if (img) img.style.display = 'none';
+  if (ph)  ph.style.display  = 'flex';
+  const meta = document.getElementById('webcam-meta');
+  if (meta) meta.textContent = '';
+}
+
+async function _fetchCameraFrame() {
+  try {
+    const data = await api('/api/camera/frame');
+    if (!data.ok) return;
+    const img = document.getElementById('webcam-img');
+    const ph  = document.getElementById('webcam-placeholder');
+    if (img) { img.src = 'data:image/jpeg;base64,' + data.image; img.style.display = 'block'; }
+    if (ph)  ph.style.display = 'none';
+    const meta = document.getElementById('webcam-meta');
+    if (meta) meta.textContent = data.width + '\xd7' + data.height + ' \xb7 live';
+  } catch (e) {}
+}
+
+// ---------- Apex avatar (canvas) ----------
+
+function _startApexAvatar() {
+  const canvas = document.getElementById('apex-avatar');
+  if (!canvas) return;
+  if (_apexAvatarRaf) { cancelAnimationFrame(_apexAvatarRaf); _apexAvatarRaf = null; }
+
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  let t = 0;
+  let lastTs = null;
+
+  function frame(ts) {
+    if (lastTs !== null) t += (ts - lastTs) / 1000;
+    lastTs = ts;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Background
+    ctx.fillStyle = '#040814';
+    ctx.fillRect(0, 0, W, H);
+
+    // Accent rings
+    _drawRing(ctx, W/2, H/2, 148, 'rgba(95,216,255,0.10)', 1);
+    _drawRing(ctx, W/2, H/2, 106, 'rgba(95,216,255,0.06)', 1);
+
+    // Face circle
+    const faceGrad = ctx.createRadialGradient(W/2, H/2-10, 10, W/2, H/2, 98);
+    faceGrad.addColorStop(0, 'rgba(8,22,44,0.96)');
+    faceGrad.addColorStop(1, 'rgba(4,8,20,0.98)');
+    ctx.beginPath();
+    ctx.arc(W/2, H/2, 98, 0, Math.PI*2);
+    ctx.fillStyle = faceGrad;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(95,216,255,0.28)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // State-driven eye params
+    let blinkScale = 1;
+    let glowAmt = 1;
+    let eyeOffX = 0;
+    let mouthW = 18;
+    const st = _apexState;
+
+    if (st === 'idle') {
+      glowAmt = 0.65 + 0.35 * Math.sin(t * 0.8);
+      const bp = t % 5;
+      if (bp > 4.75) blinkScale = Math.max(0.05, 1 - (bp - 4.75) / 0.12);
+    } else if (st === 'thinking') {
+      eyeOffX = 14 * Math.sin(t * 2.2);
+      glowAmt = 0.8 + 0.2 * Math.sin(t * 4);
+      const bp = t % 1.2;
+      if (bp > 1.1) blinkScale = Math.max(0.05, 1 - (bp - 1.1) / 0.05);
+    } else if (st === 'speaking') {
+      glowAmt = 0.9 + 0.1 * Math.sin(t * 10);
+      mouthW = 16 + 12 * Math.abs(Math.sin(t * 6.5));
+    }
+
+    // Scan line (thinking)
+    if (st === 'thinking') {
+      const sy = H/2 - 88 + ((t * 90) % 176);
+      ctx.beginPath();
+      ctx.moveTo(W/2 - 94, sy);
+      ctx.lineTo(W/2 + 94, sy);
+      ctx.strokeStyle = 'rgba(95,216,255,0.07)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Eyes
+    _drawEye(ctx, W/2 - 30 + eyeOffX, H/2 - 8, blinkScale, glowAmt);
+    _drawEye(ctx, W/2 + 30 + eyeOffX, H/2 - 8, blinkScale, glowAmt);
+
+    // Mouth
+    ctx.beginPath();
+    ctx.moveTo(W/2 - mouthW, H/2 + 38);
+    ctx.lineTo(W/2 + mouthW, H/2 + 38);
+    ctx.strokeStyle = `rgba(95,216,255,${0.25 + 0.35 * glowAmt})`;
+    ctx.lineWidth = st === 'speaking' ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // State label
+    ctx.font = '10px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(95,216,255,0.45)';
+    ctx.textAlign = 'center';
+    ctx.fillText(st.toUpperCase(), W/2, H/2 + 58);
+
+    _apexAvatarRaf = requestAnimationFrame(frame);
+  }
+
+  _apexAvatarRaf = requestAnimationFrame(frame);
+}
+
+function _drawRing(ctx, x, y, r, color, lw) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw;
+  ctx.stroke();
+}
+
+function _drawEye(ctx, cx, cy, blinkScale, glow) {
+  const R = 15, PR = 5;
+
+  // Outer glow halo
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R + 10);
+  g.addColorStop(0, `rgba(95,216,255,${0.28 * glow})`);
+  g.addColorStop(1, 'rgba(95,216,255,0)');
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + 10, 0, Math.PI*2);
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(1, Math.max(0.05, blinkScale));
+
+  // Iris fill + ring
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI*2);
+  ctx.fillStyle = `rgba(95,216,255,${0.14 * glow})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(95,216,255,${0.85 * glow})`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Pupil
+  ctx.beginPath();
+  ctx.arc(0, 0, PR, 0, Math.PI*2);
+  ctx.fillStyle = `rgba(95,216,255,${Math.min(1, glow)})`;
+  ctx.fill();
+
+  // Specular dot
+  ctx.beginPath();
+  ctx.arc(-PR*0.35, -PR*0.35, PR*0.35, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fill();
+
+  ctx.restore();
+}
+

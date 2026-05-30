@@ -664,6 +664,40 @@ async def iot_toggle(request: Request):
     return {"ok": True, "enabled": value}
 
 
+# --- Camera / Vision ---
+@app.get("/api/camera/status")
+def camera_status():
+    from tools import camera as _cam
+    try:
+        import cv2  # noqa: F401
+        cv2_available = True
+    except ImportError:
+        cv2_available = False
+    return {
+        "enabled": _cam.is_enabled(),
+        "device_index": getattr(config, "CAMERA_DEVICE_INDEX", 0),
+        "cv2_available": cv2_available,
+    }
+
+
+@app.post("/api/camera/toggle")
+async def camera_toggle(request: Request):
+    body = await request.json()
+    enabled = bool(body.get("enabled"))
+    config.CAMERA_ENABLED = enabled
+    return {"ok": True, "enabled": enabled}
+
+
+@app.get("/api/camera/frame")
+def camera_frame():
+    from tools import camera as _cam
+    try:
+        b64, (w, h) = _cam.capture()
+        return {"ok": True, "image": b64, "width": w, "height": h}
+    except RuntimeError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
+
+
 # --- Morning Briefing ---
 @app.get("/api/briefing")
 def briefing_get():
