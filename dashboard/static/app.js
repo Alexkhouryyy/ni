@@ -1455,6 +1455,11 @@ function speakBrowser(text) {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1.05;
+    // No audio-stream access for speechSynthesis → drive a procedural talk
+    // cycle on the avatar via boundary/start/end events.
+    _lipSyncActive = false;
+    u.onstart = () => _setApexState('speaking');
+    u.onend   = () => _setApexState('idle');
     window.speechSynthesis.speak(u);
   } catch (e) {}
 }
@@ -1467,6 +1472,11 @@ async function speakOpenAI(text) {
     });
     if (!r.ok) { speakBrowser(text); return; }
     const audio = new Audio(URL.createObjectURL(await r.blob()));
+    audio.crossOrigin = 'anonymous';
+    _setApexState('speaking');
+    // Real lip-sync: drive the avatar mouth from the live audio amplitude.
+    const wired = _attachLipSync(audio);
+    if (!wired) audio.addEventListener('ended', () => _setApexState('idle'));
     audio.play().catch(() => {});
   } catch (e) { speakBrowser(text); }
 }
@@ -1748,7 +1758,65 @@ async function _fetchCameraFrame() {
   } catch (e) {}
 }
 
-// ---------- Apex avatar (canvas) ----------
+// ---------- Apex avatar: expressive talking face + lip-sync ----------
+
+// Mouth openness, 0 (closed) .. 1 (wide). Driven by real audio amplitude
+// when Apex speaks through TTS; falls back to a procedural talk cycle.
+let _apexMouth = 0;          // target
+let _apexMouthRender = 0;    // smoothed value the renderer reads
+let _audioCtx = null;
+let _lipSyncActive = false;
+let _lipSyncRaf = null;
+
+function _ensureAudioCtx() {
+  if (!_audioCtx) {
+    try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { _audioCtx = null; }
+  }
+  if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+  return _audioCtx;
+}
+
+// Route a playing <audio> element through an analyser and drive _apexMouth
+// from its live loudness. Returns true if wired successfully.
+function _attachLipSync(audioEl) {
+  const ctx = _ensureAudioCtx();
+  if (!ctx) return false;
+  let analyser;
+  try {
+    const src = ctx.createMediaElementSource(audioEl);
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.6;
+    src.connect(analyser);
+    analyser.connect(ctx.destination);
+  } catch (e) { return false; }
+
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  _lipSyncActive = true;
+
+  function sample() {
+    if (!_lipSyncActive) return;
+    analyser.getByteTimeDomainData(buf);
+    // RMS around the 128 midpoint → 0..~1 loudness
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / buf.length);
+    _apexMouth = Math.min(1, rms * 3.2);   // scale up — speech RMS is small
+    _lipSyncRaf = requestAnimationFrame(sample);
+  }
+  sample();
+
+  const stop = () => {
+    _lipSyncActive = false;
+    if (_lipSyncRaf) cancelAnimationFrame(_lipSyncRaf);
+    _apexMouth = 0;
+    _setApexState('idle');
+  };
+  audioEl.addEventListener('ended', stop);
+  audioEl.addEventListener('pause', stop);
+  return true;
+}
 
 function _startApexAvatar() {
   const canvas = document.getElementById('apex-avatar');
@@ -1757,84 +1825,160 @@ function _startApexAvatar() {
 
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
   let t = 0;
   let lastTs = null;
+  let nextBlink = 2 + Math.random() * 3;
+  let blink = 0; // 0 open .. 1 closed
 
   function frame(ts) {
-    if (lastTs !== null) t += (ts - lastTs) / 1000;
+    const dt = lastTs === null ? 0 : (ts - lastTs) / 1000;
+    if (lastTs !== null) t += dt;
     lastTs = ts;
-
-    ctx.clearRect(0, 0, W, H);
-
-    // Background
-    ctx.fillStyle = '#040814';
-    ctx.fillRect(0, 0, W, H);
-
-    // Accent rings
-    _drawRing(ctx, W/2, H/2, 148, 'rgba(95,216,255,0.10)', 1);
-    _drawRing(ctx, W/2, H/2, 106, 'rgba(95,216,255,0.06)', 1);
-
-    // Face circle
-    const faceGrad = ctx.createRadialGradient(W/2, H/2-10, 10, W/2, H/2, 98);
-    faceGrad.addColorStop(0, 'rgba(8,22,44,0.96)');
-    faceGrad.addColorStop(1, 'rgba(4,8,20,0.98)');
-    ctx.beginPath();
-    ctx.arc(W/2, H/2, 98, 0, Math.PI*2);
-    ctx.fillStyle = faceGrad;
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(95,216,255,0.28)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // State-driven eye params
-    let blinkScale = 1;
-    let glowAmt = 1;
-    let eyeOffX = 0;
-    let mouthW = 18;
     const st = _apexState;
 
-    if (st === 'idle') {
-      glowAmt = 0.65 + 0.35 * Math.sin(t * 0.8);
-      const bp = t % 5;
-      if (bp > 4.75) blinkScale = Math.max(0.05, 1 - (bp - 4.75) / 0.12);
-    } else if (st === 'thinking') {
-      eyeOffX = 14 * Math.sin(t * 2.2);
-      glowAmt = 0.8 + 0.2 * Math.sin(t * 4);
-      const bp = t % 1.2;
-      if (bp > 1.1) blinkScale = Math.max(0.05, 1 - (bp - 1.1) / 0.05);
-    } else if (st === 'speaking') {
-      glowAmt = 0.9 + 0.1 * Math.sin(t * 10);
-      mouthW = 16 + 12 * Math.abs(Math.sin(t * 6.5));
+    // --- blink scheduling ---
+    if (t > nextBlink && blink === 0) blink = 0.001;
+    if (blink > 0) {
+      blink += dt * 9;
+      if (blink >= 2) { blink = 0; nextBlink = t + 2 + Math.random() * 4; }
     }
+    const eyeOpen = blink === 0 ? 1 : Math.abs(1 - (blink > 1 ? 2 - blink : blink));
 
-    // Scan line (thinking)
-    if (st === 'thinking') {
-      const sy = H/2 - 88 + ((t * 90) % 176);
+    // --- mouth target ---
+    let mouthTarget;
+    if (st === 'speaking') {
+      // Use real audio amplitude when lip-sync is live; else procedural talk
+      mouthTarget = _lipSyncActive
+        ? _apexMouth
+        : 0.25 + 0.45 * Math.abs(Math.sin(t * 9)) * (0.5 + 0.5 * Math.sin(t * 3.3));
+    } else if (st === 'thinking') {
+      mouthTarget = 0.04;
+    } else {
+      mouthTarget = 0.06 + 0.02 * Math.sin(t * 1.2); // gentle breathing
+    }
+    _apexMouthRender += (mouthTarget - _apexMouthRender) * Math.min(1, dt * 18 || 0.4);
+
+    // gaze: drifts while thinking, centered otherwise
+    const gazeX = st === 'thinking' ? 4 * Math.sin(t * 1.6) : 1.5 * Math.sin(t * 0.5);
+    const gazeY = st === 'thinking' ? -2 + 1.5 * Math.cos(t * 1.1) : 0;
+    const browLift = st === 'speaking' ? 2 + 2 * _apexMouthRender
+                   : st === 'thinking' ? -2 : 0;
+
+    // ===== render =====
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#05060d';
+    ctx.fillRect(0, 0, W, H);
+
+    // ambient glow behind head
+    const halo = ctx.createRadialGradient(cx, cy, 30, cx, cy, 160);
+    const haloI = st === 'speaking' ? 0.16 + 0.12 * _apexMouthRender : 0.10;
+    halo.addColorStop(0, `rgba(95,216,255,${haloI})`);
+    halo.addColorStop(1, 'rgba(95,216,255,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, W, H);
+
+    // --- head ---
+    const hw = 92, hh = 112;
+    const skin = ctx.createLinearGradient(cx, cy - hh, cx, cy + hh);
+    skin.addColorStop(0, '#27405c');
+    skin.addColorStop(0.5, '#1b2e46');
+    skin.addColorStop(1, '#0f1c2e');
+    _ellipse(ctx, cx, cy + 4, hw, hh, skin);
+    // rim light
+    ctx.save();
+    _ellipsePath(ctx, cx, cy + 4, hw, hh);
+    ctx.clip();
+    const rim = ctx.createLinearGradient(cx - hw, cy, cx + hw, cy);
+    rim.addColorStop(0, 'rgba(95,216,255,0.22)');
+    rim.addColorStop(0.5, 'rgba(95,216,255,0)');
+    rim.addColorStop(1, 'rgba(160,120,255,0.18)');
+    ctx.fillStyle = rim;
+    ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
+    ctx.restore();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(95,216,255,0.35)';
+    _ellipsePath(ctx, cx, cy + 4, hw, hh); ctx.stroke();
+
+    // --- eyebrows ---
+    const eyeY = cy - 18, eyeDX = 34;
+    ctx.strokeStyle = 'rgba(140,200,255,0.7)';
+    ctx.lineWidth = 4; ctx.lineCap = 'round';
+    for (const s of [-1, 1]) {
+      const ex = cx + s * eyeDX;
       ctx.beginPath();
-      ctx.moveTo(W/2 - 94, sy);
-      ctx.lineTo(W/2 + 94, sy);
-      ctx.strokeStyle = 'rgba(95,216,255,0.07)';
-      ctx.lineWidth = 1;
+      ctx.moveTo(ex - 15, eyeY - 20 - browLift);
+      ctx.quadraticCurveTo(ex, eyeY - 26 - browLift, ex + 15, eyeY - 20 - browLift + 1);
       ctx.stroke();
     }
 
-    // Eyes
-    _drawEye(ctx, W/2 - 30 + eyeOffX, H/2 - 8, blinkScale, glowAmt);
-    _drawEye(ctx, W/2 + 30 + eyeOffX, H/2 - 8, blinkScale, glowAmt);
+    // --- eyes ---
+    for (const s of [-1, 1]) {
+      const ex = cx + s * eyeDX;
+      // sclera
+      ctx.save();
+      ctx.translate(ex, eyeY);
+      ctx.scale(1, Math.max(0.06, eyeOpen));
+      _ellipse(ctx, 0, 0, 18, 13, 'rgba(225,240,255,0.92)');
+      ctx.restore();
+      if (eyeOpen > 0.25) {
+        // iris + pupil
+        const ix = ex + gazeX, iy = eyeY + gazeY;
+        const irisGrad = ctx.createRadialGradient(ix, iy, 1, ix, iy, 9);
+        irisGrad.addColorStop(0, '#7fe3ff');
+        irisGrad.addColorStop(1, '#1f86b8');
+        _ellipse(ctx, ix, iy, 9, 9, irisGrad);
+        _ellipse(ctx, ix, iy, 4, 4, '#06121d');
+        _ellipse(ctx, ix - 2.5, iy - 2.5, 2, 2, 'rgba(255,255,255,0.85)');
+      }
+      // upper lid shadow
+      ctx.strokeStyle = 'rgba(10,20,34,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(ex, eyeY, 18, 13 * Math.max(0.06, eyeOpen), 0, Math.PI, Math.PI * 2);
+      ctx.stroke();
+    }
 
-    // Mouth
+    // --- nose ---
+    ctx.strokeStyle = 'rgba(95,216,255,0.18)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(W/2 - mouthW, H/2 + 38);
-    ctx.lineTo(W/2 + mouthW, H/2 + 38);
-    ctx.strokeStyle = `rgba(95,216,255,${0.25 + 0.35 * glowAmt})`;
-    ctx.lineWidth = st === 'speaking' ? 2.5 : 1.5;
+    ctx.moveTo(cx - 1, eyeY + 12);
+    ctx.lineTo(cx - 6, cy + 22);
+    ctx.quadraticCurveTo(cx, cy + 28, cx + 6, cy + 22);
     ctx.stroke();
 
-    // State label
-    ctx.font = '10px "Courier New", monospace';
-    ctx.fillStyle = 'rgba(95,216,255,0.45)';
-    ctx.textAlign = 'center';
-    ctx.fillText(st.toUpperCase(), W/2, H/2 + 58);
+    // --- mouth (lip-synced) ---
+    const my = cy + 50;
+    const open = _apexMouthRender;            // 0..1
+    const mW = 26 + 6 * open;
+    const mH = 2 + 26 * open;
+    // lips fill
+    const lipGrad = ctx.createLinearGradient(cx, my - mH, cx, my + mH);
+    lipGrad.addColorStop(0, '#3a1320');
+    lipGrad.addColorStop(1, '#7a2438');
+    _ellipse(ctx, cx, my, mW, mH, lipGrad);
+    // inner mouth / dark cavity when open
+    if (open > 0.12) {
+      _ellipse(ctx, cx, my + mH * 0.18, mW * 0.78, mH * 0.7, '#160206');
+      // teeth hint at top when wide
+      if (open > 0.35) _ellipse(ctx, cx, my - mH * 0.42, mW * 0.6, mH * 0.18, 'rgba(240,245,255,0.85)');
+    }
+    // lip outline
+    ctx.strokeStyle = 'rgba(95,216,255,0.30)';
+    ctx.lineWidth = 1.4;
+    _ellipsePath(ctx, cx, my, mW, mH); ctx.stroke();
+
+    // thinking scan-line shimmer
+    if (st === 'thinking') {
+      const sy = cy - hh + ((t * 70) % (hh * 2));
+      ctx.save();
+      _ellipsePath(ctx, cx, cy + 4, hw, hh); ctx.clip();
+      ctx.strokeStyle = 'rgba(95,216,255,0.08)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx - hw, sy); ctx.lineTo(cx + hw, sy); ctx.stroke();
+      ctx.restore();
+    }
 
     _apexAvatarRaf = requestAnimationFrame(frame);
   }
@@ -1842,51 +1986,13 @@ function _startApexAvatar() {
   _apexAvatarRaf = requestAnimationFrame(frame);
 }
 
-function _drawRing(ctx, x, y, r, color, lw) {
+function _ellipsePath(ctx, x, y, rx, ry) {
   ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI*2);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = lw;
-  ctx.stroke();
+  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
 }
-
-function _drawEye(ctx, cx, cy, blinkScale, glow) {
-  const R = 15, PR = 5;
-
-  // Outer glow halo
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R + 10);
-  g.addColorStop(0, `rgba(95,216,255,${0.28 * glow})`);
-  g.addColorStop(1, 'rgba(95,216,255,0)');
-  ctx.beginPath();
-  ctx.arc(cx, cy, R + 10, 0, Math.PI*2);
-  ctx.fillStyle = g;
+function _ellipse(ctx, x, y, rx, ry, fill) {
+  _ellipsePath(ctx, x, y, rx, ry);
+  ctx.fillStyle = fill;
   ctx.fill();
-
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.scale(1, Math.max(0.05, blinkScale));
-
-  // Iris fill + ring
-  ctx.beginPath();
-  ctx.arc(0, 0, R, 0, Math.PI*2);
-  ctx.fillStyle = `rgba(95,216,255,${0.14 * glow})`;
-  ctx.fill();
-  ctx.strokeStyle = `rgba(95,216,255,${0.85 * glow})`;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Pupil
-  ctx.beginPath();
-  ctx.arc(0, 0, PR, 0, Math.PI*2);
-  ctx.fillStyle = `rgba(95,216,255,${Math.min(1, glow)})`;
-  ctx.fill();
-
-  // Specular dot
-  ctx.beginPath();
-  ctx.arc(-PR*0.35, -PR*0.35, PR*0.35, 0, Math.PI*2);
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.fill();
-
-  ctx.restore();
 }
 
