@@ -228,6 +228,30 @@ def main():
             watch_paths=awareness_paths,
             review_interval=config.AWARENESS_REVIEW_INTERVAL,
         )
+
+        # Wire Guardian Angel — decision-moment detection with mini-council
+        if getattr(config, "GUARDIAN_ANGEL_ENABLED", True):
+            from agent.guardian import GuardianAngel
+            from agent import longterm as _lt
+
+            def _recall_for_guardian(query: str, limit: int) -> str:
+                try:
+                    results = _lt.recall(query, limit=limit, semantic=True)
+                    return "\n".join(r.get("content", "") for r in results if r.get("content"))
+                except Exception:
+                    return ""
+
+            def _tray_notify_fn(title: str, message: str) -> None:
+                # In resident mode the tray object is available; elsewhere print
+                pass  # replaced in resident path; text-mode falls back to print below
+
+            guardian = GuardianAngel(
+                speak_fn=speak,
+                tray_notify_fn=_tray_notify_fn,
+                recall_fn=_recall_for_guardian,
+            )
+            monitor.guardian = guardian
+            print("[Guardian] Guardian Angel active.")
     else:
         # Fall back to original screenshot-only proactive
         from agent.proactive import ProactiveMonitor
@@ -252,6 +276,8 @@ def main():
                         "source": source, "content": content,
                     })
                 monitor.log.add = _add_and_broadcast
+            if hasattr(monitor, "guardian") and monitor.guardian is not None:
+                dash.set_guardian(monitor.guardian)
             port = getattr(config, "DASHBOARD_PORT", 7860)
             host = getattr(config, "DASHBOARD_HOST", "127.0.0.1")
             dash.start_in_background(port=port)

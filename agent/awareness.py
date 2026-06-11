@@ -169,6 +169,9 @@ class AwarenessMonitor:
         self._stop = threading.Event()
         self._reviewer: Optional[threading.Thread] = None
 
+        # Guardian Angel — injected after construction via monitor.guardian = ...
+        self.guardian = None
+
         # Watchers
         self.window = ActiveWindowWatcher(self.log)
         self.clipboard = ClipboardWatcher(self.log)
@@ -200,8 +203,28 @@ class AwarenessMonitor:
 
     def _review_loop(self) -> None:
         last_summary = ""
-        while not self._stop.wait(timeout=self.review_interval):
+        # Guardian Angel checks every 15 s; general Haiku review every review_interval.
+        guardian_interval = 15.0
+        _last_guardian = 0.0
+        _last_review = 0.0
+
+        while not self._stop.wait(timeout=guardian_interval):
+            now = time.time()
             events = self.log.recent(since_seconds=self.review_interval * 1.5)
+
+            # Guardian Angel — high-priority decision-moment detection
+            if self.guardian is not None and now - _last_guardian >= guardian_interval:
+                _last_guardian = now
+                try:
+                    self.guardian.check(events)
+                except Exception as e:
+                    print(f"[Guardian] Check error: {e}")
+
+            # General Haiku review — fires every review_interval
+            if now - _last_review < self.review_interval:
+                continue
+            _last_review = now
+
             if not events:
                 continue
             summary = "\n".join(

@@ -167,6 +167,12 @@ OLLAMA_COUNCIL_MODEL = os.getenv("OLLAMA_COUNCIL_MODEL", "")
 CAMERA_ENABLED = os.getenv("CAMERA_ENABLED", "false").lower() in {"1", "true", "yes"}
 CAMERA_DEVICE_INDEX = int(os.getenv("CAMERA_DEVICE_INDEX", "0"))
 
+# Guardian Angel — decision-moment detection (works alongside awareness watchers)
+GUARDIAN_ANGEL_ENABLED = os.getenv("GUARDIAN_ANGEL_ENABLED", "true").lower() in {"1", "true", "yes"}
+GUARDIAN_THRESHOLD = float(os.getenv("GUARDIAN_THRESHOLD", "0.70"))
+GUARDIAN_COOLDOWN_MINUTES = int(os.getenv("GUARDIAN_COOLDOWN_MINUTES", "20"))
+GUARDIAN_MODELS = [m.strip() for m in os.getenv("GUARDIAN_MODELS", "claude-haiku-4-5-20251001,gpt-4o-mini").split(",") if m.strip()]
+
 # IoT — Home Assistant integration (opt-in, off by default)
 IOT_ENABLED = os.getenv("IOT_ENABLED", "false").lower() in {"1", "true", "yes"}
 IOT_HA_URL = os.getenv("IOT_HA_URL", "")          # e.g. http://homeassistant.local:8123

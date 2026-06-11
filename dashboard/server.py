@@ -698,6 +698,32 @@ def camera_frame():
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
 
 
+# --- Guardian Angel ---
+_guardian_ref = None
+
+
+def set_guardian(guardian) -> None:
+    global _guardian_ref
+    _guardian_ref = guardian
+
+
+@app.get("/api/guardian")
+def guardian_get():
+    enabled = getattr(config, "GUARDIAN_ANGEL_ENABLED", True)
+    log = _guardian_ref.recent_log(10) if _guardian_ref else []
+    return {"enabled": enabled, "log": log}
+
+
+@app.post("/api/guardian/toggle")
+async def guardian_toggle(request: Request):
+    body = await request.json()
+    value = bool(body.get("enabled", True))
+    config.GUARDIAN_ANGEL_ENABLED = value
+    if _guardian_ref:
+        _guardian_ref.set_enabled(value)
+    return {"ok": True, "enabled": value}
+
+
 # --- Morning Briefing ---
 @app.get("/api/briefing")
 def briefing_get():

@@ -802,6 +802,7 @@ document.getElementById('refl-check-rollback')?.addEventListener('click', async 
 let telCostChart = null, telModelChart = null;
 async function loadTelemetry() {
   loadBudget();
+  loadGuardian();
   const days = parseInt(document.getElementById('tel-window').value);
   const t = await api('/api/telemetry?days=' + days);
   document.getElementById('tel-cost').textContent = fmtCost(t.total_cost_usd);
@@ -884,6 +885,43 @@ document.getElementById('budget-form').addEventListener('submit', async (e) => {
   if (isNaN(daily) || isNaN(session) || daily < 0 || session < 0) return;
   await api('/api/budget', { method: 'POST', body: JSON.stringify({ daily_usd: daily, session_usd: session }) });
   await loadBudget();
+});
+
+// ============== GUARDIAN ANGEL ==============
+async function loadGuardian() {
+  const g = await api('/api/guardian');
+  const checkbox = document.getElementById('guardian-enabled');
+  if (!checkbox) return;
+  checkbox.checked = g.enabled;
+  document.getElementById('guardian-enabled-label').textContent = g.enabled ? 'Active' : 'Paused';
+
+  const logEl = document.getElementById('guardian-log');
+  if (!logEl) return;
+  if (!g.log || g.log.length === 0) {
+    logEl.innerHTML = '<div class="guardian-empty">No interventions yet — Guardian Angel is watching.</div>';
+    return;
+  }
+  const KIND_ICONS = {
+    angry_message: '😤', night_purchase: '🛒', destructive_commit: '⚠️',
+    calendar_conflict: '📅', big_purchase: '💳', sensitive_paste: '🔑',
+  };
+  logEl.innerHTML = g.log.map(e => {
+    const icon = KIND_ICONS[e.kind] || '👁';
+    const d = new Date(e.ts * 1000);
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `<div class="guardian-entry">
+      <span class="guardian-icon">${icon}</span>
+      <div class="guardian-body">
+        <div class="guardian-verdict">${escapeHTML(e.verdict)}</div>
+        <div class="guardian-meta">${escapeHTML(e.description)} · ${time}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('guardian-enabled')?.addEventListener('change', async (e) => {
+  await api('/api/guardian/toggle', { method: 'POST', body: JSON.stringify({ enabled: e.target.checked }) });
+  document.getElementById('guardian-enabled-label').textContent = e.target.checked ? 'Active' : 'Paused';
 });
 
 // ============== REPLAY ==============
