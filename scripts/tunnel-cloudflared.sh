@@ -20,14 +20,20 @@ if ! command -v cloudflared >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "${1:-}" == "--named" && -n "${2:-}" ]]; then
-  HOSTNAME="$2"
-  echo "→ Routing ${HOSTNAME} to ${LOCAL}"
-  echo "  (one-time setup: 'cloudflared tunnel login' then 'cloudflared tunnel create apex'"
-  echo "   and add a CNAME for ${HOSTNAME}. See docs/OMNIPRESENCE.md.)"
+if [[ "${1:-}" == "--named" ]]; then
+  CF_CONFIG="${HOME}/.cloudflared/config.yml"
+  if [[ ! -f "${CF_CONFIG}" ]]; then
+    echo "Named tunnel not configured yet."
+    echo "Run the one-time setup first:"
+    echo "  ./scripts/setup-cloudflare-tunnel.sh"
+    exit 1
+  fi
+  HOSTNAME=$(grep 'hostname:' "${CF_CONFIG}" | head -1 | awk '{print $2}')
+  echo "→ Starting named Cloudflare tunnel (apex)"
+  echo "  Public URL : https://${HOSTNAME}"
+  echo "  Config     : ${CF_CONFIG}"
   echo
-  echo "Set PUBLIC_BASE_URL=https://${HOSTNAME} in your .env so pairing/push URLs match."
-  exec cloudflared tunnel run --url "${LOCAL}" apex
+  exec cloudflared tunnel run apex
 else
   echo "→ Starting a quick Cloudflare tunnel to ${LOCAL}"
   echo "  A https://<random>.trycloudflare.com URL will print below."

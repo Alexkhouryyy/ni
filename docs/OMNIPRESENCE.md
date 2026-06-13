@@ -62,10 +62,63 @@ dashboard on.
 
 Apex stays bound to loopback; a tunnel publishes it. Pick one:
 
-### Cloudflare Tunnel (stable public HTTPS)
+### Cloudflare Tunnel
+
+**Quick tunnel (no account needed — URL changes every restart):**
 ```bash
-./scripts/tunnel-cloudflared.sh            # quick → https://<random>.trycloudflare.com
-./scripts/tunnel-cloudflared.sh --named apex.example.com   # your own hostname
+./scripts/tunnel-cloudflared.sh
+# prints: https://<random>.trycloudflare.com
+# copy that URL → set PUBLIC_BASE_URL in .env → restart Apex
+```
+
+**Named tunnel (stable URL — set it up once, use it forever):**
+
+Run the interactive setup script once:
+```bash
+./scripts/setup-cloudflare-tunnel.sh
+```
+It will:
+1. Open a browser to authorise with your Cloudflare account (`cloudflared tunnel login`)
+2. Create a named tunnel called `apex` and save credentials to `~/.cloudflared/`
+3. Ask for your public hostname (e.g. `apex.yourdomain.com` — must be on a Cloudflare-managed domain)
+4. Write `~/.cloudflared/config.yml` routing `https://apex.yourdomain.com` → `http://localhost:7860`
+5. Create the DNS CNAME automatically (`cloudflared tunnel route dns`)
+6. Append `PUBLIC_BASE_URL=https://apex.yourdomain.com` to your `.env`
+7. Optionally install as a systemd/launchd service so it starts on boot
+
+After setup, start the tunnel on any subsequent boot with:
+```bash
+./scripts/tunnel-cloudflared.sh --named
+```
+
+**Manual steps (if you prefer not to use the script):**
+```bash
+cloudflared tunnel login
+cloudflared tunnel create apex
+# note the UUID printed (looks like 550e8400-e29b-41d4-a716-446655440000)
+cloudflared tunnel route dns apex apex.yourdomain.com
+
+# write ~/.cloudflared/config.yml:
+cat > ~/.cloudflared/config.yml <<EOF
+tunnel: <UUID>
+credentials-file: /home/$USER/.cloudflared/<UUID>.json
+ingress:
+  - hostname: apex.yourdomain.com
+    service: http://localhost:7860
+  - service: http_status:404
+EOF
+
+# add to .env:
+echo 'PUBLIC_BASE_URL=https://apex.yourdomain.com' >> .env
+
+# start:
+cloudflared tunnel run apex
+```
+
+**Auto-start on boot (Linux):**
+```bash
+sudo cloudflared service install
+sudo systemctl enable --now cloudflared
 ```
 
 ### Tailscale (most private — your devices only)
@@ -74,9 +127,9 @@ Apex stays bound to loopback; a tunnel publishes it. Pick one:
 ./scripts/tunnel-tailscale.sh --funnel     # public over HTTPS
 ```
 
-Then set the resulting URL in `.env` so pairing + push links match:
+After either tunnel type, set the URL in `.env` so pairing + push links match:
 ```
-PUBLIC_BASE_URL=https://apex.example.com
+PUBLIC_BASE_URL=https://apex.yourdomain.com
 ```
 
 ---
