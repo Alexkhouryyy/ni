@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Apex",
+  "version": "1.0.0",
+  "description": "Apex — your AI, present in every tab. Invoke with Ctrl+Shift+A and give it the page as context.",
+  "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Open Apex (Ctrl+Shift+A)" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "options_page": "options.html",
+  "commands": {
+    "open-apex": {
+      "suggested_key": { "default": "Ctrl+Shift+A", "mac": "Command+Shift+A" },
+      "description": "Open the Apex side panel"
+    }
+  },
+  "icons": { "16": "icons/icon-16.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" }
+}

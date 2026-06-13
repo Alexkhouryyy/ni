@@ -110,6 +110,18 @@ class ChatStreamer:
 # === FastAPI app ===
 app = FastAPI(title="Voice Agent Dashboard")
 
+# Allow the browser extension (chrome-extension:// / moz-extension://) to call the
+# API cross-origin. Auth is bearer-token (not cookies), so credentials stay off.
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^(chrome-extension|moz-extension)://.*$",
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
+)
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -123,6 +135,10 @@ _WEBHOOK_PATHS = frozenset({
 
 @app.middleware("http")
 async def _auth(request: Request, call_next):
+    # CORS preflight carries no Authorization header — let it through so the
+    # CORSMiddleware can answer it.
+    if request.method == "OPTIONS":
+        return await call_next(request)
     token = config.DASHBOARD_TOKEN
     if not token:
         return await call_next(request)
@@ -843,6 +859,20 @@ def _pair_url(request: Request) -> str:
 def pair_info(request: Request):
     return {"url": _pair_url(request),
             "base": (getattr(config, "PUBLIC_BASE_URL", "") or str(request.base_url).rstrip("/"))}
+
+
+@app.post("/api/awareness/ingest")
+async def awareness_ingest(request: Request):
+    """Let the browser extension (or PWA) push web context into Apex's awareness."""
+    body = await request.json()
+    source = (body.get("source") or "web")[:32]
+    content = (body.get("content") or "").strip()[:500]
+    if not content:
+        return JSONResponse({"error": "empty content"}, status_code=400)
+    if _awareness_log is None:
+        return JSONResponse({"error": "awareness not active"}, status_code=503)
+    _awareness_log.add(source, content)
+    return {"ok": True}
 
 
 @app.get("/api/pair/qr")

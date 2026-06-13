@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="sidepanel.css">
+<title>Apex</title>
+</head>
+<body>
+  <header class="ax-head">
+    <span class="ax-logo">⌃⌃</span>
+    <span class="ax-title">Apex</span>
+    <span class="ax-status" id="ax-status">·</span>
+    <button class="ax-gear" id="ax-options" title="Settings">⚙</button>
+  </header>
+
+  <div id="ax-setup" class="ax-setup" hidden>
+    <p>Connect this extension to your Apex.</p>
+    <button id="ax-open-options" class="ax-btn">Open settings</button>
+  </div>
+
+  <div id="ax-context" class="ax-context" hidden>
+    <label class="ax-ctx-toggle">
+      <input type="checkbox" id="ax-use-page" checked> Use this page as context
+    </label>
+    <button id="ax-send-awareness" class="ax-link" title="Push this page into Apex's awareness">＋ awareness</button>
+  </div>
+
+  <div id="ax-messages" class="ax-messages"></div>
+
+  <form id="ax-form" class="ax-form" hidden>
+    <textarea id="ax-input" rows="2" placeholder="Ask Apex about this page…"></textarea>
+    <button type="submit" id="ax-send" class="ax-btn">Send</button>
+  </form>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
