@@ -65,6 +65,7 @@ def main():
     longterm.init_db()
     from agent import budget as _budget_mod; _budget_mod.init_db()
     from agent import notify as _notify_mod; _notify_mod.init_push_table()
+    from agent import devices as _devices_mod; _devices_mod.init_db()
     session_id = longterm.start_session()
     telemetry.set_session(session_id)
     print(f"[Memory] Session #{session_id} started. DB: {longterm.DB_PATH}")

@@ -41,6 +41,7 @@ def init_push_table() -> None:
                 p256dh TEXT NOT NULL,
                 auth TEXT NOT NULL,
                 device_label TEXT DEFAULT '',
+                device_id TEXT DEFAULT '',
                 created_at REAL NOT NULL,
                 last_seen REAL NOT NULL
             )
@@ -50,9 +51,13 @@ def init_push_table() -> None:
             "CREATE INDEX IF NOT EXISTS idx_push_endpoint "
             "ON push_subscriptions(endpoint)"
         )
+        # Migrate older DBs that predate the device_id link column.
+        cols = {r[1] for r in c.execute("PRAGMA table_info(push_subscriptions)").fetchall()}
+        if "device_id" not in cols:
+            c.execute("ALTER TABLE push_subscriptions ADD COLUMN device_id TEXT DEFAULT ''")
 
 
-def add_subscription(sub: dict, device_label: str = "") -> int:
+def add_subscription(sub: dict, device_label: str = "", device_id: str = "") -> int:
     """Insert or refresh a Web Push subscription. Returns its row id."""
     endpoint = sub.get("endpoint", "")
     keys = sub.get("keys", {}) or {}
@@ -64,13 +69,14 @@ def add_subscription(sub: dict, device_label: str = "") -> int:
     with longterm._conn() as c:
         c.execute(
             """
-            INSERT INTO push_subscriptions (endpoint, p256dh, auth, device_label, created_at, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO push_subscriptions (endpoint, p256dh, auth, device_label, device_id, created_at, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(endpoint) DO UPDATE SET
                 p256dh=excluded.p256dh, auth=excluded.auth,
-                device_label=excluded.device_label, last_seen=excluded.last_seen
+                device_label=excluded.device_label, device_id=excluded.device_id,
+                last_seen=excluded.last_seen
             """,
-            (endpoint, p256dh, auth, device_label, now, now),
+            (endpoint, p256dh, auth, device_label, device_id, now, now),
         )
         row = c.execute(
             "SELECT id FROM push_subscriptions WHERE endpoint=?", (endpoint,)
@@ -86,12 +92,12 @@ def remove_subscription(endpoint: str) -> None:
 def list_subscriptions() -> list[dict]:
     with longterm._conn() as c:
         rows = c.execute(
-            "SELECT id, endpoint, p256dh, auth, device_label, last_seen "
+            "SELECT id, endpoint, p256dh, auth, device_label, device_id, last_seen "
             "FROM push_subscriptions ORDER BY last_seen DESC"
         ).fetchall()
     return [
         {"id": r[0], "endpoint": r[1], "p256dh": r[2], "auth": r[3],
-         "device_label": r[4], "last_seen": r[5]}
+         "device_label": r[4], "device_id": r[5], "last_seen": r[6]}
         for r in rows
     ]
 
@@ -144,7 +150,7 @@ class Notifier:
             from pywebpush import webpush, WebPushException
         except Exception:
             return 0  # dependency absent → push disabled, other sinks still ran
-        subs = list_subscriptions()
+        subs = self._target_subscriptions(payload.get("priority", "normal"))
         if not subs:
             return 0
         data = json.dumps({
@@ -169,6 +175,23 @@ class Notifier:
             except Exception:
                 pass
         return sent
+
+    def _target_subscriptions(self, priority: str) -> list[dict]:
+        """High priority → every device. Normal → the device you're actively using
+        (if it has a subscription), else every device."""
+        subs = list_subscriptions()
+        if priority == "high" or len(subs) <= 1:
+            return subs
+        try:
+            from agent import devices as _dev
+            active = _dev.active_device_id()
+        except Exception:
+            active = None
+        if active:
+            targeted = [s for s in subs if s.get("device_id") == active]
+            if targeted:
+                return targeted
+        return subs
 
     def _telegram(self, title: str, body: str) -> None:
         from tools import telegram as _tg

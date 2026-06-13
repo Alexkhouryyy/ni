@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Apex">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
-<link rel="stylesheet" href="/static/styles.css?v=omni1">
-<link rel="stylesheet" href="/static/mobile.css?v=omni1">
+<link rel="stylesheet" href="/static/styles.css?v=omni2">
+<link rel="stylesheet" href="/static/mobile.css?v=omni2">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -306,6 +306,20 @@
         <button id="push-enable-btn" class="primary-btn">Enable notifications</button>
         <button id="push-test-btn" class="ghost-btn">Send test</button>
       </div>
+    </div>
+
+    <!-- Devices & pairing -->
+    <div class="panel" id="devices-panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <h3>Devices</h3>
+        <button id="pair-show-btn" class="ghost-btn">Pair a phone</button>
+      </div>
+      <div class="guardian-desc">Apex is one brain with many windows. Every device you sign in shares the same memory and context.</div>
+      <div id="pair-box" class="pair-box">
+        <img id="pair-qr" class="pair-qr" alt="Pairing QR code">
+        <div class="pair-hint">On your phone, open the camera and scan this. It opens Apex pre-configured — then tap <b>Add to Home Screen</b>.</div>
+      </div>
+      <div id="devices-list" class="devices-list"></div>
     </div>
 
     <!-- Guardian Angel panel -->
@@ -641,8 +655,8 @@
   <button class="ib-no" id="install-no">Not now</button>
 </div>
 
-<script src="/static/app.js?v=omni1"></script>
-<script src="/static/voice-mobile.js?v=omni1"></script>
+<script src="/static/app.js?v=omni2"></script>
+<script src="/static/voice-mobile.js?v=omni2"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
 </body>
 </html>

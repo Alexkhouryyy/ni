@@ -142,3 +142,20 @@
 @media (max-width: 760px) {
   #notify-toasts { top: calc(60px + env(safe-area-inset-top, 0px)); left: 12px; right: 12px; max-width: none; }
 }
+
+/* Devices & pairing panel */
+.pair-box { display: none; margin: 6px 0 12px; align-items: center; gap: 14px; }
+.pair-box.show { display: flex; flex-wrap: wrap; }
+.pair-qr {
+  width: 160px; height: 160px; border-radius: 10px; background: #fff; padding: 8px;
+  flex-shrink: 0; image-rendering: pixelated;
+}
+.pair-hint { font-size: 12px; color: var(--text-mute); line-height: 1.5; max-width: 280px; }
+.devices-list { display: flex; flex-direction: column; gap: 6px; }
+.dev-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  background: var(--bg-2); border-radius: 8px; font-size: 13px; }
+.dev-ico { font-size: 16px; }
+.dev-label { color: var(--text); }
+.dev-me { color: var(--accent); font-size: 11px; margin-left: 4px; }
+.dev-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+.dev-dot.on { background: #4ad07f; box-shadow: 0 0 8px rgba(74,208,127,0.6); }

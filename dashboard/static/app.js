@@ -8,6 +8,35 @@ function setToken(t) {
   else localStorage.removeItem(_TOKEN_KEY);
 }
 
+// Stable per-device identity (used for presence + push routing)
+function getDeviceId() {
+  let id = localStorage.getItem('apex_device_id');
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+       : 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem('apex_device_id', id);
+  }
+  return id;
+}
+function deviceKind() {
+  return window.matchMedia('(display-mode: standalone)').matches ? 'pwa' : 'web';
+}
+function deviceLabel() {
+  return deviceKind() + ': ' + (navigator.platform || 'device');
+}
+
+// Pairing: a scanned QR opens  <base>/?source=pair#token=XYZ  — adopt the token.
+(function handlePairing() {
+  try {
+    const h = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+    const t = h.get('token');
+    if (t) {
+      setToken(t);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  } catch (_) { /* ignore */ }
+})();
+
 function showLogin(msg = '') {
   const overlay = document.getElementById('login-overlay');
   if (!overlay) return;
@@ -101,14 +130,24 @@ async function refreshStatus() {
 const wsIndicator = document.getElementById('ws-indicator');
 const feed = document.getElementById('event-feed');
 let ws;
+let _wsHeartbeat = null;
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const token = getToken();
-  const qs = token ? `?token=${encodeURIComponent(token)}` : '';
-  ws = new WebSocket(`${proto}://${location.host}/ws/live${qs}`);
-  ws.onopen = () => { wsIndicator.textContent = '● live'; wsIndicator.className = 'brand-sub ws-on'; };
+  const params = new URLSearchParams();
+  if (token) params.set('token', token);
+  params.set('device', getDeviceId());
+  params.set('kind', deviceKind());
+  params.set('label', deviceLabel());
+  ws = new WebSocket(`${proto}://${location.host}/ws/live?${params.toString()}`);
+  ws.onopen = () => {
+    wsIndicator.textContent = '● live'; wsIndicator.className = 'brand-sub ws-on';
+    clearInterval(_wsHeartbeat);
+    _wsHeartbeat = setInterval(() => { try { if (ws && ws.readyState === 1) ws.send('ping'); } catch (_) {} }, 25000);
+  };
   ws.onclose = () => {
     wsIndicator.textContent = '● offline'; wsIndicator.className = 'brand-sub ws-off';
+    clearInterval(_wsHeartbeat);
     setTimeout(connectWS, 3000);
   };
   ws.onmessage = ev => {
@@ -805,6 +844,7 @@ async function loadTelemetry() {
   loadBudget();
   loadGuardian();
   loadTimeCapsule();
+  loadDevices();
   const days = parseInt(document.getElementById('tel-window').value);
   const t = await api('/api/telemetry?days=' + days);
   document.getElementById('tel-cost').textContent = fmtCost(t.total_cost_usd);
@@ -1868,7 +1908,7 @@ async function togglePush() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
-      await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON(), device_label: navigator.userAgent.slice(0, 80) } });
+      await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON(), device_label: deviceLabel(), device_id: getDeviceId() } });
     }
   } catch (e) { alert('Could not change notifications: ' + e.message); }
   finally { btn.disabled = false; refreshPushState(); }
@@ -1876,6 +1916,37 @@ async function togglePush() {
 document.getElementById('push-enable-btn')?.addEventListener('click', togglePush);
 document.getElementById('push-test-btn')?.addEventListener('click', () => api('/api/push/test', { method: 'POST' }));
 setTimeout(refreshPushState, 1200);
+
+// Returning focus to this device marks it active (so normal nudges route here).
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && ws && ws.readyState === 1) { try { ws.send('ping'); } catch (_) {} }
+});
+
+// ========================== Devices panel (pairing + presence) ==========================
+async function loadDevices() {
+  const listEl = document.getElementById('devices-list');
+  if (!listEl) return;
+  try {
+    const d = await api('/api/devices');
+    if (!d.devices || d.devices.length === 0) {
+      listEl.innerHTML = '<div class="guardian-empty">No devices yet — scan the code to add your phone.</div>';
+    } else {
+      const KIND = { pwa: '📱', web: '🖥️', extension: '🧩' };
+      listEl.innerHTML = d.devices.map((dev) => {
+        const ico = KIND[dev.kind] || '🖥️';
+        const dot = dev.online ? '<span class="dev-dot on"></span>' : '<span class="dev-dot"></span>';
+        const me = dev.device_id === getDeviceId() ? ' <span class="dev-me">this device</span>' : '';
+        return `<div class="dev-row">${dot}<span class="dev-ico">${ico}</span>` +
+          `<span class="dev-label">${escapeHTML(dev.label || dev.kind)}${me}</span></div>`;
+      }).join('');
+    }
+  } catch (_) {}
+  const qr = document.getElementById('pair-qr');
+  if (qr && !qr.src) qr.src = '/api/pair/qr?ts=' + Date.now();
+}
+document.getElementById('pair-show-btn')?.addEventListener('click', () => {
+  document.getElementById('pair-box')?.classList.toggle('show');
+});
 
 
 // ========================== VISION / CAMERA ==========================

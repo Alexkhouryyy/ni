@@ -789,8 +789,9 @@ async def push_subscribe(request: Request):
     body = await request.json()
     sub = body.get("subscription") or body
     label = body.get("device_label", "")
+    device_id = body.get("device_id", "")
     try:
-        sub_id = notify_mod.add_subscription(sub, device_label=label)
+        sub_id = notify_mod.add_subscription(sub, device_label=label, device_id=device_id)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     return {"ok": True, "id": sub_id}
@@ -811,6 +812,52 @@ async def push_test():
     notify_mod.notify("Apex", "Notifications are working. You'll hear from me here.",
                       kind="info", url="/", dedup_key=None)
     return {"ok": True, "subscriptions": len(notify_mod.list_subscriptions())}
+
+
+# --- Devices + pairing (cross-device presence) ---
+from agent import devices as devices_mod
+
+
+@app.get("/api/devices")
+def devices_list():
+    return {"devices": devices_mod.list_devices(), "active": devices_mod.active_device_id()}
+
+
+@app.delete("/api/devices/{device_id}")
+def devices_forget(device_id: str):
+    devices_mod.forget(device_id)
+    return {"ok": True}
+
+
+def _pair_url(request: Request) -> str:
+    """Build the URL a phone should open to pair: <base>/#token=<token>."""
+    base = (getattr(config, "PUBLIC_BASE_URL", "") or "").rstrip("/")
+    if not base:
+        # Fall back to the host the dashboard was reached on.
+        base = str(request.base_url).rstrip("/")
+    token = config.DASHBOARD_TOKEN or ""
+    return f"{base}/?source=pair#token={token}" if token else f"{base}/?source=pair"
+
+
+@app.get("/api/pair/info")
+def pair_info(request: Request):
+    return {"url": _pair_url(request),
+            "base": (getattr(config, "PUBLIC_BASE_URL", "") or str(request.base_url).rstrip("/"))}
+
+
+@app.get("/api/pair/qr")
+def pair_qr(request: Request):
+    """PNG QR code encoding the pairing URL (base + token) for the phone to scan."""
+    try:
+        import qrcode
+        import io
+        img = qrcode.make(_pair_url(request))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(buf.getvalue(), media_type="image/png",
+                        headers={"Cache-Control": "no-store"})
+    except Exception as e:
+        return JSONResponse({"error": f"qr unavailable: {e}"}, status_code=500)
 
 
 # --- Morning Briefing ---
@@ -1020,6 +1067,16 @@ async def ws_live(ws: WebSocket):
     await ws_manager.connect(ws)
     if ws_manager.loop is None:
         ws_manager.loop = asyncio.get_event_loop()
+    # Register the connecting device so the hub can route + the dashboard can list it.
+    from agent import devices as _devices
+    device_id = ws.query_params.get("device", "")
+    if device_id:
+        _devices.touch(
+            device_id,
+            label=ws.query_params.get("label", ""),
+            kind=ws.query_params.get("kind", "web"),
+            user_agent=ws.headers.get("user-agent", ""),
+        )
     try:
         # Send initial snapshot
         await ws.send_json({"type": "snapshot", "ts": time.time(), "data": {
@@ -1028,7 +1085,9 @@ async def ws_live(ws: WebSocket):
             "events_recent": _awareness_log.recent(60) if _awareness_log else [],
         }})
         while True:
-            await ws.receive_text()  # keep alive
+            await ws.receive_text()  # keep alive — also a heartbeat
+            if device_id:
+                _devices.touch(device_id)
     except WebSocketDisconnect:
         ws_manager.disconnect(ws)
 
