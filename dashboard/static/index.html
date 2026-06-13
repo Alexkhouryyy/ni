@@ -2,9 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Apex Agent · Dashboard</title>
-<link rel="stylesheet" href="/static/styles.css?v=vision7">
+<!-- PWA -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#070b14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Apex">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
+<link rel="stylesheet" href="/static/styles.css?v=omni1">
+<link rel="stylesheet" href="/static/mobile.css?v=omni1">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -597,7 +607,31 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=vision7"></script>
+<!-- ===== Mobile / PWA chrome (hidden on desktop via mobile.css) ===== -->
+<header id="mobile-topbar">
+  <button id="mt-burger" class="mt-burger" aria-label="Menu">☰</button>
+  <div class="mt-title">Apex</div>
+  <div class="mt-live">● offline</div>
+</header>
+<div id="drawer-backdrop"></div>
+<nav id="mobile-tabbar">
+  <button data-mtab="chat"><span class="mtab-ico">◌</span>Chat</button>
+  <button data-mtab="live"><span class="mtab-ico">▣</span>Live</button>
+  <button data-mtab="memory"><span class="mtab-ico">◎</span>Memory</button>
+  <button data-mtab="goals"><span class="mtab-ico">◇</span>Goals</button>
+  <button data-mtab="more"><span class="mtab-ico">☰</span>More</button>
+</nav>
+<button id="mobile-talk" aria-label="Talk to Apex">🎙</button>
+<div id="mobile-voice-status"></div>
+
+<div id="install-banner">
+  <span>Install Apex on your device</span>
+  <button class="ib-yes" id="install-yes">Install</button>
+  <button class="ib-no" id="install-no">Not now</button>
+</div>
+
+<script src="/static/app.js?v=omni1"></script>
+<script src="/static/voice-mobile.js?v=omni1"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
 </body>
 </html>

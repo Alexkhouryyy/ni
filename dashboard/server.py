@@ -128,7 +128,10 @@ async def _auth(request: Request, call_next):
         return await call_next(request)
     path = request.url.path
     # Allow the SPA shell + static assets so the login overlay can load.
-    if path == "/" or path.startswith("/static/") or path == "/health":
+    # PWA entry points (manifest + service worker) must also load pre-auth so the
+    # app can install and the SW can control the origin before a token is entered.
+    if (path == "/" or path.startswith("/static/") or path == "/health"
+            or path == "/sw.js" or path == "/manifest.webmanifest"):
         return await call_next(request)
     # Inbound webhooks carry per-service auth; don't block them here.
     if path in _WEBHOOK_PATHS:
@@ -150,6 +153,26 @@ async def index():
     if index_path.exists():
         return FileResponse(str(index_path))
     return HTMLResponse("<h1>Dashboard static files missing</h1>")
+
+
+# --- PWA entry points (served from root scope, not /static/) ---
+@app.get("/sw.js")
+async def service_worker():
+    # The service worker must be served from the origin root so its scope can
+    # control the whole app (a /static/ SW could only control /static/).
+    sw = STATIC_DIR / "sw.js"
+    if sw.exists():
+        return FileResponse(str(sw), media_type="application/javascript",
+                            headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+    return Response("// not found", status_code=404, media_type="application/javascript")
+
+
+@app.get("/manifest.webmanifest")
+async def web_manifest():
+    mf = STATIC_DIR / "manifest.webmanifest"
+    if mf.exists():
+        return FileResponse(str(mf), media_type="application/manifest+json")
+    return JSONResponse({"error": "manifest missing"}, status_code=404)
 
 
 # --- Status ---

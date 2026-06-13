@@ -1,0 +1,115 @@
+/* === Apex mobile / PWA layer ===
+ * Loaded after styles.css. Everything here is gated behind a narrow-viewport
+ * media query so the desktop dashboard is untouched on large screens.
+ */
+
+/* Chrome for the mobile shell — hidden on desktop. */
+#mobile-topbar, #mobile-tabbar, #mobile-talk, #drawer-backdrop,
+#mobile-voice-status { display: none; }
+
+@media (max-width: 760px) {
+  /* --- Sidebar becomes a slide-in drawer --- */
+  #sidebar {
+    position: fixed; top: 0; left: 0; height: 100vh; width: 270px; z-index: 1000;
+    transform: translateX(-100%); transition: transform 0.25s ease;
+    box-shadow: 0 0 40px rgba(0,0,0,0.6);
+  }
+  body.drawer-open #sidebar { transform: translateX(0); }
+  #drawer-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 999;
+    background: rgba(0,0,0,0.5); opacity: 0; pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.drawer-open #drawer-backdrop { opacity: 1; pointer-events: auto; }
+
+  /* --- Main content goes full-width, with room for the bars --- */
+  #main-content {
+    padding: 14px 14px 88px; width: 100%;
+    padding-top: calc(56px + env(safe-area-inset-top, 0px));
+  }
+
+  /* --- Fixed top bar (brand + hamburger + live dot) --- */
+  #mobile-topbar {
+    display: flex; align-items: center; gap: 12px;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 900;
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 14px 0;
+    background: rgba(7,11,20,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  #mobile-topbar .mt-burger {
+    font-size: 22px; background: none; border: none; color: var(--text);
+    padding: 6px 8px; cursor: pointer;
+  }
+  #mobile-topbar .mt-title { font-weight: 700; letter-spacing: 0.5px; flex: 1; }
+  #mobile-topbar .mt-live { font-size: 11px; color: var(--text-dim); }
+  #mobile-topbar .mt-live.ws-on { color: #5bd; }
+
+  /* --- Bottom tab bar --- */
+  #mobile-tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: rgba(7,11,20,0.92); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+  }
+  #mobile-tabbar button {
+    flex: 1; background: none; border: none; color: var(--text-dim);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; font-size: 10px; cursor: pointer; padding: 8px 0;
+  }
+  #mobile-tabbar button .mtab-ico { font-size: 19px; line-height: 1; }
+  #mobile-tabbar button.active { color: var(--accent); }
+
+  /* --- Floating talk button (FAB) above the tab bar --- */
+  #mobile-talk {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; right: 18px; z-index: 901;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer;
+    font-size: 26px; color: #06121f;
+    background: radial-gradient(circle at 35% 30%, #8fd6ff, #6cf 45%, #8a7cff);
+    box-shadow: 0 6px 22px rgba(108,204,255,0.45);
+    transition: transform 0.12s ease, box-shadow 0.2s ease;
+  }
+  #mobile-talk:active { transform: scale(0.92); }
+  #mobile-talk.listening {
+    animation: talk-pulse 1.1s ease-in-out infinite;
+    background: radial-gradient(circle at 35% 30%, #ffd1e8, #ff6ca6 45%, #8a7cff);
+  }
+  @keyframes talk-pulse {
+    0%,100% { box-shadow: 0 6px 22px rgba(255,108,166,0.45); }
+    50%     { box-shadow: 0 6px 34px rgba(255,108,166,0.85); }
+  }
+
+  /* --- Mobile voice transcript bubble --- */
+  #mobile-voice-status {
+    position: fixed; left: 14px; right: 90px; z-index: 901;
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-3); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 14px; font-size: 13px; color: var(--text);
+    box-shadow: 0 6px 22px rgba(0,0,0,0.4); display: none;
+  }
+  #mobile-voice-status.show { display: block; }
+
+  /* --- Density tweaks so dense desktop panels fit a phone --- */
+  .stat-grid { grid-template-columns: 1fr 1fr !important; }
+  .panel { padding: 14px !important; }
+  h1, .cmd-title-main { font-size: 22px !important; }
+  table.data-table { font-size: 12px; }
+}
+
+/* Install banner (shown by app.js when installable; small on all sizes) */
+#install-banner {
+  display: none; position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: 16px; z-index: 1200; align-items: center; gap: 12px;
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 12px;
+  padding: 10px 14px; box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+#install-banner.show { display: flex; }
+#install-banner button {
+  border: none; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 600;
+}
+#install-banner .ib-yes { background: var(--accent); color: #06121f; }
+#install-banner .ib-no { background: transparent; color: var(--text-dim); }
+@media (max-width: 760px) { #install-banner { bottom: calc(140px + env(safe-area-inset-bottom, 0px)); } }

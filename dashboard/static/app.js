@@ -1761,6 +1761,35 @@ async function boot() {
 }
 boot();
 
+// ========================== PWA: service worker + install ==========================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW register failed', e));
+  });
+}
+
+let _deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  if (localStorage.getItem('apex_install_dismissed') === '1') return;
+  document.getElementById('install-banner')?.classList.add('show');
+});
+document.getElementById('install-yes')?.addEventListener('click', async () => {
+  document.getElementById('install-banner')?.classList.remove('show');
+  if (!_deferredInstallPrompt) return;
+  _deferredInstallPrompt.prompt();
+  try { await _deferredInstallPrompt.userChoice; } catch (_) {}
+  _deferredInstallPrompt = null;
+});
+document.getElementById('install-no')?.addEventListener('click', () => {
+  document.getElementById('install-banner')?.classList.remove('show');
+  localStorage.setItem('apex_install_dismissed', '1');
+});
+window.addEventListener('appinstalled', () => {
+  document.getElementById('install-banner')?.classList.remove('show');
+});
+
 // ========================== VISION / CAMERA ==========================
 
 let _cameraFeedInterval = null;
