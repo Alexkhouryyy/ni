@@ -347,6 +347,14 @@ class TimeCapsule:
             self.speak(line)
         except Exception:
             pass
+        # Cross-device reach (phone/PWA/other tabs) via the notification hub.
+        try:
+            from agent import notify as _notify
+            _notify.notify("Time Capsule", line, kind="timecapsule",
+                           priority="normal", url="/?tab=telemetry",
+                           dedup_key=f"capsule:{cap.id}")
+        except Exception:
+            pass
         self._record("surfaced", cap.kind, cap.statement, cap.callback_date, verdict=line)
 
     # -- helpers --------------------------------------------------------------

@@ -182,6 +182,19 @@ TIME_CAPSULE_SURFACE_INTERVAL_SECONDS = int(os.getenv("TIME_CAPSULE_SURFACE_INTE
 TIME_CAPSULE_DEFAULT_CALLBACK_DAYS = int(os.getenv("TIME_CAPSULE_DEFAULT_CALLBACK_DAYS", "14"))
 TIME_CAPSULE_MAX_PER_DAY = int(os.getenv("TIME_CAPSULE_MAX_PER_DAY", "2"))
 
+# === Omnipresence: cross-device notifications (Web Push / VAPID) ===
+# Generate keys once with: python scripts/gen_vapid_keys.py  (writes to .env)
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:apex@localhost")
+# When no Web Push subscription exists yet, fall back to Telegram so proactive
+# nudges still reach the user during setup.
+NOTIFY_TELEGRAM_FALLBACK = os.getenv("NOTIFY_TELEGRAM_FALLBACK", "true").lower() in {"1", "true", "yes"}
+NOTIFY_DEDUP_SECONDS = int(os.getenv("NOTIFY_DEDUP_SECONDS", "30"))
+# Public HTTPS origin (set when exposed via a tunnel) — used for push click-through
+# URLs, the PWA start_url, and QR pairing. Empty = local/LAN only.
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+
 # IoT — Home Assistant integration (opt-in, off by default)
 IOT_ENABLED = os.getenv("IOT_ENABLED", "false").lower() in {"1", "true", "yes"}
 IOT_HA_URL = os.getenv("IOT_HA_URL", "")          # e.g. http://homeassistant.local:8123

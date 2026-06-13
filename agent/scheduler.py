@@ -134,6 +134,20 @@ def _fire_task(task_id: str, description: str) -> None:
         )
         if _speak_fn and response:
             _speak_fn(response)
+        # Cross-device reach: a scheduled task firing while you're away from the
+        # desktop should still reach your phone.
+        if response:
+            try:
+                from agent import notify as _notify
+                is_briefing = description.lstrip().startswith("[BRIEFING]")
+                title = "Morning briefing" if is_briefing else "Scheduled task"
+                kind = "briefing" if is_briefing else "schedule"
+                url = "/?tab=briefing" if is_briefing else "/?tab=schedule"
+                _notify.notify(title, response[:300], kind=kind,
+                               priority="normal", url=url,
+                               dedup_key=f"task:{task_id}:{int(time.time() // 60)}")
+            except Exception:
+                pass
     except Exception as e:
         print(f"[Scheduler] Task {task_id!r} failed: {e}")
 

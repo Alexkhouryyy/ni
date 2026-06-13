@@ -290,6 +290,14 @@ class GuardianAngel:
             self.speak(f"Guardian Angel. {verdict}")
         except Exception:
             pass
+        # Cross-device reach (phone/PWA/other tabs) via the notification hub.
+        try:
+            from agent import notify as _notify
+            _notify.notify("Guardian Angel", verdict, kind="guardian",
+                           priority="high", url="/?tab=telemetry",
+                           dedup_key=f"guardian:{match.kind}")
+        except Exception:
+            pass
         entry = {
             "ts": time.time(),
             "kind": match.kind,

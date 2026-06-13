@@ -773,6 +773,46 @@ async def timecapsule_toggle(request: Request):
     return {"ok": True, "enabled": value}
 
 
+# --- Web Push (cross-device proactive notifications) ---
+from agent import notify as notify_mod
+
+
+@app.get("/api/push/vapid")
+def push_vapid():
+    """Public VAPID key the browser needs to subscribe (safe to expose)."""
+    return {"publicKey": getattr(config, "VAPID_PUBLIC_KEY", ""),
+            "enabled": bool(getattr(config, "VAPID_PRIVATE_KEY", ""))}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(request: Request):
+    body = await request.json()
+    sub = body.get("subscription") or body
+    label = body.get("device_label", "")
+    try:
+        sub_id = notify_mod.add_subscription(sub, device_label=label)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True, "id": sub_id}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(request: Request):
+    body = await request.json()
+    endpoint = (body.get("endpoint") or "").strip()
+    if endpoint:
+        notify_mod.remove_subscription(endpoint)
+    return {"ok": True}
+
+
+@app.post("/api/push/test")
+async def push_test():
+    """Send a test notification through the hub to every device."""
+    notify_mod.notify("Apex", "Notifications are working. You'll hear from me here.",
+                      kind="info", url="/", dedup_key=None)
+    return {"ok": True, "subscriptions": len(notify_mod.list_subscriptions())}
+
+
 # --- Morning Briefing ---
 @app.get("/api/briefing")
 def briefing_get():

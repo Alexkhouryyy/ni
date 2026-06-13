@@ -57,7 +57,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-/* ---- Web Push (payloads delivered in Milestone 2) ---- */
+/* ---- Web Push ---- */
 self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (_e) { data = { body: event.data && event.data.text() }; }
@@ -71,7 +71,15 @@ self.addEventListener('push', (event) => {
     data: { url: data.url || '/', kind: data.kind || 'info' },
     requireInteraction: data.priority === 'high',
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  // If a dashboard/PWA window is focused it already shows the WebSocket in-app
+  // toast — skip the OS notification to avoid a double (unless high priority).
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const focused = list.some((c) => c.focused);
+      if (focused && data.priority !== 'high') return;
+      return self.registration.showNotification(title, options);
+    })
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {

@@ -117,6 +117,7 @@ function connectWS() {
     if (msg.type === 'snapshot' && msg.data?.events_recent) {
       msg.data.events_recent.forEach(e => addFeedItem(e));
     }
+    if (msg.type === 'notify') showNotifyToast(msg);
     if (msg.type === 'chat_token') { _chatAppendToken(msg.delta, msg.chat_id); _setApexState('speaking'); }
     if (msg.type === 'chat_done')  { _chatFinalize(msg.chat_id, msg.response, msg.session_id, msg.turn_index); _setApexState('idle'); }
     if (msg.type === 'chat_error') { _chatError(msg.error, msg.chat_id); _setApexState('idle'); }
@@ -1789,6 +1790,93 @@ document.getElementById('install-no')?.addEventListener('click', () => {
 window.addEventListener('appinstalled', () => {
   document.getElementById('install-banner')?.classList.remove('show');
 });
+
+// ========================== Notifications: in-app toast + Web Push ==========================
+const NOTIFY_ICONS = {
+  guardian: '🛡️', timecapsule: '🕰️', briefing: '☀️', schedule: '⏰', info: '🔔',
+};
+function showNotifyToast(msg) {
+  let wrap = document.getElementById('notify-toasts');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'notify-toasts';
+    document.body.appendChild(wrap);
+  }
+  const el = document.createElement('div');
+  el.className = 'notify-toast' + (msg.priority === 'high' ? ' high' : '');
+  const icon = NOTIFY_ICONS[msg.kind] || NOTIFY_ICONS.info;
+  el.innerHTML =
+    `<span class="nt-icon">${icon}</span>` +
+    `<div class="nt-body"><div class="nt-title">${escapeHTML(msg.title || 'Apex')}</div>` +
+    `<div class="nt-text">${escapeHTML(msg.body || '')}</div></div>`;
+  el.addEventListener('click', () => {
+    if (msg.url && msg.url !== '/') {
+      try {
+        const u = new URL(msg.url, location.origin);
+        const tab = new URLSearchParams(u.search).get('tab');
+        if (tab) document.querySelector(`.nav-btn[data-tab="${tab}"]`)?.click();
+      } catch (_) {}
+    }
+    el.remove();
+  });
+  wrap.appendChild(el);
+  setTimeout(() => { el.classList.add('fade'); setTimeout(() => el.remove(), 400); },
+    msg.priority === 'high' ? 12000 : 7000);
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function refreshPushState() {
+  const btn = document.getElementById('push-enable-btn');
+  const status = document.getElementById('push-status');
+  if (!btn) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    btn.disabled = true; if (status) status.textContent = 'Not supported on this browser.';
+    return;
+  }
+  try {
+    const { enabled } = await api('/api/push/vapid');
+    if (!enabled) { btn.disabled = true; if (status) status.textContent = 'Server has no VAPID keys — run scripts/gen_vapid_keys.py.'; return; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) { btn.textContent = 'Disable notifications'; btn.dataset.on = '1'; if (status) status.textContent = 'This device will receive Apex notifications.'; }
+    else { btn.textContent = 'Enable notifications'; btn.dataset.on = ''; if (status) status.textContent = 'Get Guardian, Time Capsule and briefings on this device.'; }
+  } catch (e) { if (status) status.textContent = 'Push unavailable: ' + e.message; }
+}
+
+async function togglePush() {
+  const btn = document.getElementById('push-enable-btn');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if (btn.dataset.on === '1') {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) { await api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }); await sub.unsubscribe(); }
+    } else {
+      const { publicKey } = await api('/api/push/vapid');
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { alert('Notification permission denied.'); return; }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON(), device_label: navigator.userAgent.slice(0, 80) } });
+    }
+  } catch (e) { alert('Could not change notifications: ' + e.message); }
+  finally { btn.disabled = false; refreshPushState(); }
+}
+document.getElementById('push-enable-btn')?.addEventListener('click', togglePush);
+document.getElementById('push-test-btn')?.addEventListener('click', () => api('/api/push/test', { method: 'POST' }));
+setTimeout(refreshPushState, 1200);
+
 
 // ========================== VISION / CAMERA ==========================
 
