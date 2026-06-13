@@ -171,6 +171,8 @@ class AwarenessMonitor:
 
         # Guardian Angel — injected after construction via monitor.guardian = ...
         self.guardian = None
+        # Time Capsule — injected after construction via monitor.timecapsule = ...
+        self.timecapsule = None
 
         # Watchers
         self.window = ActiveWindowWatcher(self.log)
@@ -219,6 +221,13 @@ class AwarenessMonitor:
                     self.guardian.check(events)
                 except Exception as e:
                     print(f"[Guardian] Check error: {e}")
+
+            # Time Capsule — long-horizon capture/surface (self-rate-limited)
+            if self.timecapsule is not None:
+                try:
+                    self.timecapsule.tick()
+                except Exception as e:
+                    print(f"[TimeCapsule] tick error: {e}")
 
             # General Haiku review — fires every review_interval
             if now - _last_review < self.review_interval:

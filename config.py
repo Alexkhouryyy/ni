@@ -173,6 +173,15 @@ GUARDIAN_THRESHOLD = float(os.getenv("GUARDIAN_THRESHOLD", "0.70"))
 GUARDIAN_COOLDOWN_MINUTES = int(os.getenv("GUARDIAN_COOLDOWN_MINUTES", "20"))
 GUARDIAN_MODELS = [m.strip() for m in os.getenv("GUARDIAN_MODELS", "claude-haiku-4-5-20251001,gpt-4o-mini").split(",") if m.strip()]
 
+# Time Capsule — long-horizon memory: bookmark goal/emotional statements and
+# surface them as unprompted callbacks days or weeks later.
+TIME_CAPSULE_ENABLED = os.getenv("TIME_CAPSULE_ENABLED", "true").lower() in {"1", "true", "yes"}
+TIME_CAPSULE_MODEL = os.getenv("TIME_CAPSULE_MODEL", "claude-haiku-4-5-20251001")
+TIME_CAPSULE_SCAN_INTERVAL_SECONDS = int(os.getenv("TIME_CAPSULE_SCAN_INTERVAL_SECONDS", "60"))
+TIME_CAPSULE_SURFACE_INTERVAL_SECONDS = int(os.getenv("TIME_CAPSULE_SURFACE_INTERVAL_SECONDS", "1800"))
+TIME_CAPSULE_DEFAULT_CALLBACK_DAYS = int(os.getenv("TIME_CAPSULE_DEFAULT_CALLBACK_DAYS", "14"))
+TIME_CAPSULE_MAX_PER_DAY = int(os.getenv("TIME_CAPSULE_MAX_PER_DAY", "2"))
+
 # IoT — Home Assistant integration (opt-in, off by default)
 IOT_ENABLED = os.getenv("IOT_ENABLED", "false").lower() in {"1", "true", "yes"}
 IOT_HA_URL = os.getenv("IOT_HA_URL", "")          # e.g. http://homeassistant.local:8123

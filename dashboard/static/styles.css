@@ -1472,6 +1472,51 @@ pre.md-pre code { background: none; border: none; padding: 0; }
   color: var(--text-dim);
 }
 
+/* === Time Capsule === */
+.capsule-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 4px 0 12px;
+  line-height: 1.5;
+}
+.capsule-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.capsule-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 8px 0;
+  font-style: italic;
+}
+.capsule-entry {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-radius: 8px;
+  border-left: 3px solid rgba(186,148,255,0.35);
+}
+.capsule-entry.capsule-surfaced {
+  border-left-color: rgba(120,255,180,0.45);
+}
+.capsule-icon { font-size: 18px; line-height: 1.3; flex-shrink: 0; }
+.capsule-body { flex: 1; min-width: 0; }
+.capsule-statement {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+.capsule-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 @media (max-width: 720px) {
   .vision-layout { grid-template-columns: 1fr; }
   #apex-avatar { width: 280px; height: 280px; }

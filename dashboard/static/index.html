@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Apex Agent · Dashboard</title>
-<link rel="stylesheet" href="/static/styles.css?v=vision6">
+<link rel="stylesheet" href="/static/styles.css?v=vision7">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -301,6 +301,20 @@
       <div id="guardian-log" class="guardian-log"></div>
     </div>
 
+    <!-- Time Capsule panel -->
+    <div class="panel" id="timecapsule-panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <h3>Time Capsule</h3>
+        <label class="toggle-row">
+          <span class="toggle-label" id="timecapsule-enabled-label">Active</span>
+          <input type="checkbox" id="timecapsule-enabled" checked>
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+      </div>
+      <div class="capsule-desc">Bookmarks goals and feelings you mention ("I want to start running") and surfaces them again, unprompted, days or weeks later — "how's that going?"</div>
+      <div id="timecapsule-log" class="capsule-log"></div>
+    </div>
+
     <div class="stat-grid">
       <div class="stat-card"><div class="stat-label">Total cost</div><div class="stat-value" id="tel-cost">—</div></div>
       <div class="stat-card"><div class="stat-label">Total calls</div><div class="stat-value" id="tel-calls">—</div></div>
@@ -583,7 +597,7 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=vision6"></script>
+<script src="/static/app.js?v=vision7"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
 </body>
 </html>

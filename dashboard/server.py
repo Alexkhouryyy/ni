@@ -724,6 +724,32 @@ async def guardian_toggle(request: Request):
     return {"ok": True, "enabled": value}
 
 
+# --- Time Capsule ---
+_timecapsule_ref = None
+
+
+def set_timecapsule(timecapsule) -> None:
+    global _timecapsule_ref
+    _timecapsule_ref = timecapsule
+
+
+@app.get("/api/timecapsule")
+def timecapsule_get():
+    enabled = getattr(config, "TIME_CAPSULE_ENABLED", True)
+    log = _timecapsule_ref.recent_capsules(10) if _timecapsule_ref else []
+    return {"enabled": enabled, "log": log}
+
+
+@app.post("/api/timecapsule/toggle")
+async def timecapsule_toggle(request: Request):
+    body = await request.json()
+    value = bool(body.get("enabled", True))
+    config.TIME_CAPSULE_ENABLED = value
+    if _timecapsule_ref:
+        _timecapsule_ref.set_enabled(value)
+    return {"ok": True, "enabled": value}
+
+
 # --- Morning Briefing ---
 @app.get("/api/briefing")
 def briefing_get():

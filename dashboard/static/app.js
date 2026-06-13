@@ -803,6 +803,7 @@ let telCostChart = null, telModelChart = null;
 async function loadTelemetry() {
   loadBudget();
   loadGuardian();
+  loadTimeCapsule();
   const days = parseInt(document.getElementById('tel-window').value);
   const t = await api('/api/telemetry?days=' + days);
   document.getElementById('tel-cost').textContent = fmtCost(t.total_cost_usd);
@@ -922,6 +923,49 @@ async function loadGuardian() {
 document.getElementById('guardian-enabled')?.addEventListener('change', async (e) => {
   await api('/api/guardian/toggle', { method: 'POST', body: JSON.stringify({ enabled: e.target.checked }) });
   document.getElementById('guardian-enabled-label').textContent = e.target.checked ? 'Active' : 'Paused';
+});
+
+// ============== TIME CAPSULE ==============
+async function loadTimeCapsule() {
+  const t = await api('/api/timecapsule');
+  const checkbox = document.getElementById('timecapsule-enabled');
+  if (!checkbox) return;
+  checkbox.checked = t.enabled;
+  document.getElementById('timecapsule-enabled-label').textContent = t.enabled ? 'Active' : 'Paused';
+
+  const logEl = document.getElementById('timecapsule-log');
+  if (!logEl) return;
+  if (!t.log || t.log.length === 0) {
+    logEl.innerHTML = '<div class="capsule-empty">No capsules yet — mention a goal or how you feel and Apex will remember.</div>';
+    return;
+  }
+  const KIND_ICONS = {
+    goal: '🎯', aspiration: '✨', commitment: '🤝', concern: '💭', reflection: '🪞',
+  };
+  logEl.innerHTML = t.log.map(e => {
+    const icon = KIND_ICONS[e.kind] || '🕰️';
+    const captured = (e.action === 'surfaced') ? 'surfaced' : 'captured';
+    const when = new Date(e.ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const due = e.callback_date
+      ? new Date(e.callback_date * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' })
+      : '';
+    const meta = (e.action === 'surfaced')
+      ? `surfaced · ${when}`
+      : `captured ${when} · check back ${due}`;
+    const text = e.verdict ? e.verdict : e.statement;
+    return `<div class="capsule-entry ${e.action === 'surfaced' ? 'capsule-surfaced' : ''}">
+      <span class="capsule-icon">${icon}</span>
+      <div class="capsule-body">
+        <div class="capsule-statement">${escapeHTML(text)}</div>
+        <div class="capsule-meta">${escapeHTML(meta)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('timecapsule-enabled')?.addEventListener('change', async (e) => {
+  await api('/api/timecapsule/toggle', { method: 'POST', body: JSON.stringify({ enabled: e.target.checked }) });
+  document.getElementById('timecapsule-enabled-label').textContent = e.target.checked ? 'Active' : 'Paused';
 });
 
 // ============== REPLAY ==============

@@ -252,6 +252,16 @@ def main():
             )
             monitor.guardian = guardian
             print("[Guardian] Guardian Angel active.")
+
+            # Wire Time Capsule — long-horizon memory, reuses the same speak/tray fns
+            if getattr(config, "TIME_CAPSULE_ENABLED", True):
+                from agent.timecapsule import TimeCapsule, _init_table
+                _init_table()
+                monitor.timecapsule = TimeCapsule(
+                    speak_fn=speak,
+                    tray_notify_fn=_tray_notify_fn,
+                )
+                print("[TimeCapsule] Time Capsule active.")
     else:
         # Fall back to original screenshot-only proactive
         from agent.proactive import ProactiveMonitor
@@ -278,6 +288,8 @@ def main():
                 monitor.log.add = _add_and_broadcast
             if hasattr(monitor, "guardian") and monitor.guardian is not None:
                 dash.set_guardian(monitor.guardian)
+            if getattr(monitor, "timecapsule", None) is not None:
+                dash.set_timecapsule(monitor.timecapsule)
             port = getattr(config, "DASHBOARD_PORT", 7860)
             host = getattr(config, "DASHBOARD_HOST", "127.0.0.1")
             dash.start_in_background(port=port)
