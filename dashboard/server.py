@@ -133,6 +133,12 @@ _WEBHOOK_PATHS = frozenset({
 })
 
 
+# Brute-force throttle: too many bad tokens from one IP → cool that IP off.
+from dashboard.ratelimit import AuthThrottle
+
+_throttle = AuthThrottle(window=60.0, max_fails=10)
+
+
 @app.middleware("http")
 async def _auth(request: Request, call_next):
     # CORS preflight carries no Authorization header — let it through so the
@@ -152,9 +158,13 @@ async def _auth(request: Request, call_next):
     # Inbound webhooks carry per-service auth; don't block them here.
     if path in _WEBHOOK_PATHS:
         return await call_next(request)
+    ip = request.client.host if request.client else "?"
+    if _throttle.is_locked(ip):
+        return Response("Too many attempts. Try again later.", status_code=429)
     auth = request.headers.get("Authorization", "")
     if auth == f"Bearer {token}":
         return await call_next(request)
+    _throttle.record_failure(ip)
     return Response("Unauthorized", status_code=401)
 
 
@@ -1131,6 +1141,14 @@ def start_in_background(port: int = 7860, host: str | None = None) -> threading.
 
     def runner():
         _host = host if host is not None else config.DASHBOARD_HOST
+        # Fail closed: never expose a tokenless dashboard on a public interface.
+        # (A tunnel like Cloudflare/Tailscale still reaches a loopback bind.)
+        loopback = {"127.0.0.1", "localhost", "::1"}
+        if _host not in loopback and not config.DASHBOARD_TOKEN:
+            print("[Dashboard] ⚠ Refusing to bind " + _host + " with an empty "
+                  "DASHBOARD_TOKEN — anyone could run commands. Falling back to "
+                  "127.0.0.1. Set DASHBOARD_TOKEN to expose Apex.")
+            _host = "127.0.0.1"
         cfg = uvicorn.Config(app, host=_host, port=port, log_level="warning")
         server = uvicorn.Server(cfg)
         server.run()
