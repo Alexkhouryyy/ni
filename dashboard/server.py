@@ -871,6 +871,90 @@ def pair_info(request: Request):
             "base": (getattr(config, "PUBLIC_BASE_URL", "") or str(request.base_url).rstrip("/"))}
 
 
+@app.get("/api/pending-actions")
+def pending_actions_list():
+    """List cortex actions awaiting user approval."""
+    try:
+        from agent import cortex as _cortex
+        return {"actions": _cortex.list_pending("pending")}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/pending-actions/{action_id}/approve")
+def pending_actions_approve(action_id: int):
+    try:
+        from agent import cortex as _cortex
+        result = _cortex.approve_action(action_id)
+        return {"ok": True, "result": result}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/pending-actions/{action_id}/reject")
+def pending_actions_reject(action_id: int):
+    try:
+        from agent import cortex as _cortex
+        result = _cortex.reject_action(action_id)
+        return {"ok": True, "result": result}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/forged-tools")
+def forged_tools_list():
+    """List tools that the skill forge has written."""
+    try:
+        from agent import skill_forge as _forge
+        return {"tools": _forge.list_forged()}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/forged-tools/{tool_id}/approve")
+def forged_tools_approve(tool_id: int):
+    try:
+        from agent import skill_forge as _forge
+        result = _forge.approve_forged(tool_id)
+        return {"ok": True, "result": result}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/forged-tools/{tool_id}/reject")
+def forged_tools_reject(tool_id: int):
+    try:
+        from agent import skill_forge as _forge
+        result = _forge.reject_forged(tool_id)
+        return {"ok": True, "result": result}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/world-state")
+def world_state_get():
+    """Current world state synthesized by the world model."""
+    try:
+        from agent import world_model as _wm
+        return {"state": _wm.get(), "prefs": __import__("agent.prefs", fromlist=["get"]).get()}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/perception")
+def perception_query(q: str = "", hours: float = 24.0, limit: int = 50):
+    """Query the persistent perception log."""
+    try:
+        from agent import perception as _perc
+        if q:
+            results = _perc.query(q, since_hours=hours, limit=limit)
+        else:
+            results = _perc.recent(since_hours=hours, limit=limit)
+        return {"events": results}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/api/awareness/ingest")
 async def awareness_ingest(request: Request):
     """Let the browser extension (or PWA) push web context into Apex's awareness."""

@@ -63,6 +63,14 @@ def _gather(hours: int) -> dict:
         except Exception:
             pass
 
+    # Pull recent perception log (durable store) — richer than the drained ring buffer
+    perception_events = []
+    try:
+        from agent import perception as _perc
+        perception_events = _perc.recent(since_hours=hours, limit=200)
+    except Exception:
+        pass
+
     return {
         "sessions": [{"id": s[0], "started_at": s[1], "ended_at": s[2], "summary": s[3]} for s in sessions],
         "memories": [{"id": m[0], "kind": m[2], "content": m[3], "importance": m[4]} for m in memories],
@@ -70,7 +78,8 @@ def _gather(hours: int) -> dict:
         "progress": [{"goal_title": p[0], "ts": p[1], "note": p[2]} for p in progress],
         "tasks": [{"description": t[0], "last_run": t[1], "run_count": t[2]} for t in tasks],
         "entities": [{"name": e[0], "kind": e[1]} for e in ent_rows],
-        "awareness_events": awareness_events[-200:],  # cap
+        "awareness_events": awareness_events[-200:],  # cap (ring buffer drain)
+        "perception_events": perception_events,       # durable persisted log
     }
 
 
@@ -111,6 +120,11 @@ def _build_digest(data: dict) -> str:
     if data["awareness_events"]:
         lines.append(f"\n## Awareness events ({len(data['awareness_events'])} drained)")
         for e in data["awareness_events"][-50:]:
+            lines.append(f"  - [{e.get('source','?')}] {str(e.get('content',''))[:160]}")
+
+    if data.get("perception_events"):
+        lines.append(f"\n## Perception log ({len(data['perception_events'])} events from durable store)")
+        for e in data["perception_events"][-60:]:
             lines.append(f"  - [{e.get('source','?')}] {str(e.get('content',''))[:160]}")
 
     return "\n".join(lines) if lines else "(no recent activity)"
@@ -224,10 +238,20 @@ def consolidate(client, hours: int = 24, autosave: bool = True) -> dict:
     except Exception as e:
         print(f"[Reflection] rollback check failed: {e}")
 
+    # Preference distillation — run weekly, skipped if not enough time has passed
+    prefs_updated = False
+    try:
+        from agent import prefs as prefs_mod
+        result = prefs_mod.distill(client)
+        prefs_updated = bool(result)
+    except Exception as e:
+        print(f"[Reflection] prefs distillation failed: {e}")
+
     return {
         "created": created, "applied": applied, "pending": created - applied,
         "skills_refined": skills_refined,
         "rollback": rollback_summary,
+        "prefs_updated": prefs_updated,
     }
 
 

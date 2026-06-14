@@ -40,8 +40,15 @@ class AwarenessLog:
         self._lock = threading.Lock()
 
     def add(self, source: str, content: str) -> None:
+        ts = time.time()
         with self._lock:
-            self._events.append({"ts": time.time(), "source": source, "content": content})
+            self._events.append({"ts": ts, "source": source, "content": content})
+        # Persist to durable perception log (lazy import avoids circular deps at module load)
+        try:
+            from agent import perception as _perc
+            _perc.log_event(source, content, ts)
+        except Exception:
+            pass
 
     def recent(self, since_seconds: float = 120.0) -> list[dict]:
         cutoff = time.time() - since_seconds
@@ -173,6 +180,9 @@ class AwarenessMonitor:
         self.guardian = None
         # Time Capsule — injected after construction via monitor.timecapsule = ...
         self.timecapsule = None
+        # World Model + Autonomous Cortex — injected after construction
+        self.world_model_client = None  # Anthropic client for world_model.build()
+        self.cortex = None              # agent.cortex module reference
 
         # Watchers
         self.window = ActiveWindowWatcher(self.log)
@@ -207,8 +217,11 @@ class AwarenessMonitor:
         last_summary = ""
         # Guardian Angel checks every 15 s; general Haiku review every review_interval.
         guardian_interval = 15.0
+        world_model_interval = 300.0  # 5 min — rebuild world state
         _last_guardian = 0.0
         _last_review = 0.0
+        _last_world_model = 0.0
+        _world_state = ""
 
         while not self._stop.wait(timeout=guardian_interval):
             now = time.time()
@@ -228,6 +241,21 @@ class AwarenessMonitor:
                     self.timecapsule.tick()
                 except Exception as e:
                     print(f"[TimeCapsule] tick error: {e}")
+
+            # World Model + Autonomous Cortex — every 5 min
+            if self.world_model_client is not None and now - _last_world_model >= world_model_interval:
+                _last_world_model = now
+                try:
+                    from agent import world_model as _wm
+                    _world_state = _wm.build(self.world_model_client, self.log, force=True)
+                except Exception as e:
+                    print(f"[WorldModel] Build error: {e}")
+
+                if self.cortex is not None:
+                    try:
+                        self.cortex.tick(self.world_model_client, _world_state, events, force=True)
+                    except Exception as e:
+                        print(f"[Cortex] Tick error: {e}")
 
             # General Haiku review — fires every review_interval
             if now - _last_review < self.review_interval:

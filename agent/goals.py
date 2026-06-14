@@ -197,15 +197,33 @@ def evaluate_recent_work(client, days: int = 7) -> str:
 
 
 def active_goals_for_prompt() -> str:
-    """Return a compact string of active goals to inject at session start."""
+    """Return goals + world state + user preferences to inject at session start."""
     goals = list_goals(active_only=True)
-    if not goals:
-        return ""
-    lines = ["[Active goals — keep these in mind:]"]
-    for g in goals[:8]:
-        deadline = ""
-        if g["deadline"]:
-            from datetime import datetime
-            deadline = f" (by {datetime.fromtimestamp(g['deadline']).date()})"
-        lines.append(f"  - [{g['horizon']}] {g['title']}{deadline}")
+    lines = []
+
+    if goals:
+        lines.append("[Active goals — keep these in mind:]")
+        for g in goals[:8]:
+            deadline = ""
+            if g["deadline"]:
+                from datetime import datetime
+                deadline = f" (by {datetime.fromtimestamp(g['deadline']).date()})"
+            lines.append(f"  - [{g['horizon']}] {g['title']}{deadline}")
+
+    try:
+        from agent import world_model as _wm
+        world_state = _wm.get()
+        if world_state:
+            lines.append(f"\n[Current world state:]\n  {world_state}")
+    except Exception:
+        pass
+
+    try:
+        from agent import prefs as _prefs
+        pref_digest = _prefs.get()
+        if pref_digest:
+            lines.append(f"\n[Your communication preferences:]\n{pref_digest[:400]}")
+    except Exception:
+        pass
+
     return "\n".join(lines)
