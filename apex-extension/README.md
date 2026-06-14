@@ -7,7 +7,7 @@ about the page you're on, and (optionally) push the page into Apex's awareness.
 
 1. Open `chrome://extensions` (or `edge://extensions`).
 2. Enable **Developer mode**.
-3. Click **Load unpacked** and select this `extension/` folder.
+3. Click **Load unpacked** and select this `apex-extension/` folder.
 4. Click the Apex icon → **⚙ settings**, then either:
    - paste the **pairing link** from the dashboard's *Devices → Pair a phone* QR
      (fills the URL + token automatically), or

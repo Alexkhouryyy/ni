@@ -155,10 +155,10 @@ yet, Apex falls back to **Telegram** (if configured) so you're never unreachable
 
 ## 5. Browser extension
 
-Apex in every tab. See `extension/README.md`:
+Apex in every tab. See `apex-extension/README.md`:
 
 1. `chrome://extensions` → Developer mode → **Load unpacked** → select
-   `extension/`.
+   `apex-extension/`.
 2. Settings → paste the pairing link (or URL + token).
 3. **Ctrl/Cmd+Shift+A** opens the side panel; ask about the page, or push it into
    Apex's awareness with **＋ awareness**.
