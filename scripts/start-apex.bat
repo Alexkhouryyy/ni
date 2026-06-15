@@ -29,7 +29,7 @@ if defined TOKEN (
 REM --- If Apex is already running on the port, just open the dashboard ---
 netstat -ano | findstr ":%PORT%" | findstr "LISTENING" > NUL 2>&1
 if %errorlevel% == 0 (
-    echo [Apex] Already running — opening dashboard...
+    echo [Apex] Already running - opening dashboard...
     start "" "%URL%"
     exit /b 0
 )
@@ -47,7 +47,7 @@ netstat -ano | findstr ":%PORT%" | findstr "LISTENING" > NUL 2>&1
 if %errorlevel% == 0 goto ready
 if %tries% lss 20 goto wait
 
-echo [Apex] Server did not respond in time — opening dashboard anyway.
+echo [Apex] Server did not respond in time - opening dashboard anyway.
 
 :ready
 start "" "%URL%"

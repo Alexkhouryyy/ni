@@ -1,10 +1,12 @@
 # Creates Apex shortcuts on the Desktop and in the Start Menu, with the Apex icon.
-# Run via install-apex-shortcut.bat (double-click) — no need to touch PowerShell directly.
+# Run via install-apex-shortcut.bat (double-click) - no need to touch PowerShell directly.
+# NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads BOM-less .ps1 as ANSI,
+# so non-ASCII characters (em-dashes, smart quotes) break the parser.
 
 $ErrorActionPreference = "Stop"
 
-# Repo root = parent of the scripts folder this file lives in
-# $PSScriptRoot is the directory containing this .ps1 (reliable on PowerShell 3.0+)
+# Repo root = parent of the scripts folder this file lives in.
+# $PSScriptRoot is the directory containing this .ps1 (reliable on PowerShell 3.0+).
 $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $repo = (Resolve-Path (Join-Path $scriptDir "..")).Path
@@ -17,7 +19,7 @@ if (-not (Test-Path $target)) {
     exit 1
 }
 if (-not (Test-Path $icon)) {
-    Write-Host "WARNING: icon not found at $icon — shortcut will use the default icon." -ForegroundColor Yellow
+    Write-Host "WARNING: icon not found at $icon - shortcut will use the default icon." -ForegroundColor Yellow
     $icon = $null
 }
 
@@ -38,7 +40,7 @@ $desktopLink = Join-Path $desktop "Apex.lnk"
 New-ApexShortcut $desktopLink
 Write-Host "[OK] Desktop shortcut created: $desktopLink" -ForegroundColor Green
 
-# 2) Start Menu shortcut (makes Apex searchable — just press Start and type "Apex")
+# 2) Start Menu shortcut (makes Apex searchable: press Start and type "Apex")
 $startMenu = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs"
 $startLink = Join-Path $startMenu "Apex.lnk"
 New-ApexShortcut $startLink
@@ -50,4 +52,4 @@ Write-Host "  - Double-click the Apex icon on your Desktop, or"
 Write-Host "  - Press the Start key and type 'Apex'"
 Write-Host ""
 Write-Host "To pin it to the taskbar (Windows blocks this via script):" -ForegroundColor Cyan
-Write-Host "  Right-click the Desktop 'Apex' icon  ->  Show more options  ->  Pin to taskbar"
+Write-Host "  Right-click the Desktop 'Apex' icon -> Show more options -> Pin to taskbar"
