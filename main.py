@@ -67,6 +67,10 @@ def main():
     from agent import budget as _budget_mod; _budget_mod.init_db()
     from agent import notify as _notify_mod; _notify_mod.init_push_table()
     from agent import devices as _devices_mod; _devices_mod.init_db()
+    from agent import world_model as _wm_mod; _wm_mod.init_db()
+    from agent import perception as _perc_mod; _perc_mod.init_db()
+    from agent import cortex as _cortex_mod; _cortex_mod.init_db()
+    from agent import skill_forge as _forge_mod; _forge_mod.init_db()
     session_id = longterm.start_session()
     telemetry.set_session(session_id)
     print(f"[Memory] Session #{session_id} started. DB: {longterm.DB_PATH}")
@@ -283,6 +287,19 @@ def main():
                     tray_notify_fn=_tray_notify_fn,
                 )
                 print("[TimeCapsule] Time Capsule active.")
+
+        # Wire World Model + Autonomous Cortex
+        monitor.world_model_client = agent.anthropic
+        monitor.cortex = _cortex_mod
+        # Give cortex access to notify so it can push phone notifications
+        try:
+            from agent import notify as _notify_ref
+            _cortex_mod.set_notify_fn(_notify_ref.notify)
+            _forge_mod.set_notify_fn(_notify_ref.notify)
+        except Exception:
+            pass
+        print("[Cortex] Autonomous cortex active (trusted allowlist mode).")
+        print("[SkillForge] Skill forge active.")
     else:
         # Fall back to original screenshot-only proactive
         from agent.proactive import ProactiveMonitor
