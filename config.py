@@ -12,6 +12,13 @@ THINKING_BUDGET = 8000  # tokens for extended thinking
 API_MAX_RETRIES = 4  # transient errors (429/500/529/network) retried by the SDK with exponential backoff
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "anthropic/claude-3-5-sonnet")
+SMART_ROUTING_ENABLED = False   # set True to activate; routes simple queries to Haiku
+ROUTING_SIMPLE_MODEL = "claude-haiku-4-5-20251001"
+CURATOR_ENABLED = True
+CURATOR_INTERVAL_DAYS = 7
+CURATOR_MIN_IDLE_HOURS = 2
+CURATOR_STALE_DAYS = 30
+CURATOR_ARCHIVE_DAYS = 90
 
 # Voice
 WHISPER_MODEL = "base"          # tiny/base/small/medium/large

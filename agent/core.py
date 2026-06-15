@@ -871,6 +871,53 @@ TOOLS = [
             "required": ["query"],
         },
     },
+    # --- Bounded file memory ---
+    {
+        "name": "memory",
+        "description": (
+            "Add, replace, or remove entries in the persistent memory files loaded at "
+            "session start. Use 'memory' target for environment facts, project conventions, "
+            "lessons learned. Use 'user' target for the user profile: name, preferences, "
+            "work style, pet peeves. Call proactively whenever you learn something worth "
+            "keeping across sessions — don't ask permission, just save it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["add", "replace", "remove"]},
+                "target": {"type": "string", "enum": ["memory", "user"]},
+                "content": {"type": "string", "description": "Entry to add, or replacement text"},
+                "old_text": {"type": "string", "description": "Substring to find (required for replace/remove)"},
+            },
+            "required": ["action", "target", "content"],
+        },
+    },
+    # --- Markdown procedural skills ---
+    {
+        "name": "skill_manage",
+        "description": (
+            "Create and manage Markdown procedural skills — runbooks the agent writes "
+            "when it solves a novel multi-step problem, so it doesn't re-derive it next time. "
+            "Use 'create' to write a new skill when you find a repeatable procedure. "
+            "Use 'view' to load a skill's full content before following it. "
+            "Use 'list' to see what procedural skills exist."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "create", "view", "edit", "patch", "delete"],
+                },
+                "name": {"type": "string", "description": "Skill name (kebab-case, e.g. 'deploy-to-prod')"},
+                "description": {"type": "string", "description": "One-line description of what this skill does"},
+                "content": {"type": "string", "description": "Full Markdown body of the skill (for create/edit)"},
+                "old_text": {"type": "string", "description": "Text to find (for patch)"},
+                "new_text": {"type": "string", "description": "Replacement text (for patch)"},
+            },
+            "required": ["action"],
+        },
+    },
     # --- Skills registry ---
     {
         "name": "list_skills",
@@ -1212,6 +1259,19 @@ def _execute_tool(name: str, inputs: dict) -> str:
             )
             return json.dumps(results, indent=2, default=str)
 
+        elif name == "memory":
+            return longterm.save_memory_entry(
+                target=inputs["target"],
+                action=inputs["action"],
+                content=inputs["content"],
+                old_text=inputs.get("old_text"),
+            )
+
+        elif name == "skill_manage":
+            from agent import skill_md as _skill_md
+            return _skill_md.manage(**{k: inputs.get(k) for k in
+                ("action", "name", "description", "content", "old_text", "new_text")})
+
         # --- Skills registry ---
         elif name == "list_skills":
             return json.dumps(skills_mod.list_skills(), indent=2)
@@ -1374,6 +1434,7 @@ class AgentCore:
         self._channel_memories: dict[str, Memory] = {}
         self._channel_locks: dict[str, threading.Lock] = {}
         self._channels_mutex = threading.Lock()
+        self._memory_files: dict = longterm.load_memory_files()
 
     @property
     def client(self):
@@ -1423,7 +1484,6 @@ class AgentCore:
         return cached + self._mcp_tools + self_mod.get_dynamic_tools()
 
     def _effective_system_prompt(self) -> list[dict]:
-        # Return a list of content blocks so we can attach cache_control to the static base.
         blocks: list[dict] = [
             {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
         ]
@@ -1433,6 +1493,33 @@ class AgentCore:
         overlay = self_mod.get_prompt_addition()
         if overlay:
             blocks.append({"type": "text", "text": "## USER-SET BEHAVIORAL RULES (must follow):\n" + overlay})
+        # Frozen memory snapshot — loaded once at session start, never re-read per turn
+        mem = self._memory_files.get("memory", "")
+        usr = self._memory_files.get("user", "")
+        if mem or usr:
+            mem_used, mem_max = len(mem), 2200
+            usr_used, usr_max = len(usr), 1375
+            mem_pct = int(mem_used / mem_max * 100)
+            usr_pct = int(usr_used / usr_max * 100)
+            memory_block = (
+                f"\n══════════════════════════════════════\n"
+                f"APEX MEMORY [{mem_pct}% — {mem_used}/{mem_max} chars]\n"
+                f"══════════════════════════════════════\n"
+                f"{mem or '(empty)'}\n\n"
+                f"USER PROFILE [{usr_pct}% — {usr_used}/{usr_max} chars]\n"
+                f"══════════════════════════════════════\n"
+                f"{usr or '(empty)'}\n"
+            )
+            blocks.append({"type": "text", "text": memory_block})
+        # Markdown procedural skills — names/descriptions only (content loaded lazily via skill_manage view)
+        try:
+            from agent import skill_md as _skill_md
+            md_skills = _skill_md.list_skills()
+            if md_skills:
+                skill_lines = "\n".join(f"- {s['name']}: {s['description']}" for s in md_skills)
+                blocks.append({"type": "text", "text": f"\n## PROCEDURAL SKILLS (use skill_manage to view full content):\n{skill_lines}\n"})
+        except Exception:
+            pass
         return blocks
 
     def _get_channel(self, channel_id: str | None) -> tuple[Memory, threading.Lock]:
@@ -1539,8 +1626,10 @@ class AgentCore:
                         memory.add("assistant", cap_msg)
                         return cap_msg
 
+                from agent import router as _router
+                _routed_model, _complexity = _router.route_model(user_text, self._model, use_thinking)
                 kwargs = dict(
-                    model=self._model,
+                    model=_routed_model,
                     max_tokens=16000,
                     system=self._effective_system_prompt(),
                     tools=self._all_tools(),

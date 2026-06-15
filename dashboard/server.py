@@ -1135,6 +1135,37 @@ async def ws_live(ws: WebSocket):
 _START_TIME = time.time()
 
 
+# ---------------------------------------------------------------------------
+# Skill Curator
+# ---------------------------------------------------------------------------
+@app.get("/api/curator/status")
+async def curator_status():
+    try:
+        from agent import curator as _curator
+        return _curator.status()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/curator/run")
+async def curator_run(dry_run: bool = False):
+    try:
+        from agent import curator as _curator
+        report = _curator.run(dry_run=dry_run, client=None)
+        return {"report": report, "dry_run": dry_run}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/curator/rollback")
+async def curator_rollback():
+    try:
+        from agent import curator as _curator
+        return {"result": _curator.rollback()}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # === Public API: start in a background thread ===
 def start_in_background(port: int = 7860, host: str | None = None) -> threading.Thread:
     import uvicorn

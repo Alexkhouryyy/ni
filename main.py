@@ -12,6 +12,7 @@ import os
 import signal
 import sys
 import threading
+import time
 
 # Ensure ANTHROPIC_API_KEY is set before anything else
 from dotenv import load_dotenv
@@ -189,6 +190,24 @@ def main():
     # Wire every messaging channel's inbound dispatch to this agent.
     from tools.channels import wire_channels
     wire_channels(agent)
+
+    # Skill Curator — background maintenance thread
+    if getattr(config, "CURATOR_ENABLED", True):
+        _last_activity_ref = {"ts": time.time()}
+        def _curator_tick():
+            import time as _t
+            while True:
+                _t.sleep(3600)
+                try:
+                    from agent import curator as _cur
+                    if _cur.should_run(last_active_ts=_last_activity_ref["ts"]):
+                        print("[Curator] Running scheduled curation...")
+                        report = _cur.run(dry_run=False, client=agent.anthropic)
+                        lines = report.splitlines()
+                        print(f"[Curator] Done. {len(lines)} report lines.")
+                except Exception as e:
+                    print(f"[Curator] Error: {e}")
+        threading.Thread(target=_curator_tick, daemon=True, name="SkillCurator").start()
 
     # Telegram long-polling — pulls messages when there's no public webhook URL.
     if config.TELEGRAM_POLLING:

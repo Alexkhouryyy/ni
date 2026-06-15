@@ -400,3 +400,86 @@ def search_turns(query: str, limit: int = 20, session_id: int | None = None) -> 
             "turn_index": r[3], "role": r[4], "content": content,
         })
     return results
+
+
+# ---------------------------------------------------------------------------
+# Bounded file-based memory (APEX_MEMORY.md + APEX_USER.md)
+# Two plain Markdown files read ONCE at session start (frozen snapshot for
+# Anthropic prefix cache). Agent self-manages via the `memory` tool.
+# ---------------------------------------------------------------------------
+import re as _re
+from pathlib import Path as _Path
+
+_APEX_MEMORY_DIR = _Path.home() / ".apex" / "memory"
+_MEMORY_FILE = _APEX_MEMORY_DIR / "APEX_MEMORY.md"
+_USER_FILE = _APEX_MEMORY_DIR / "APEX_USER.md"
+_MEMORY_LIMIT = 2200
+_USER_LIMIT = 1375
+
+_INJECTION_PATTERNS = _re.compile(
+    r"ignore previous instructions|system prompt|<\|im_start\|>|password|api.?key|secret",
+    _re.I,
+)
+
+
+def load_memory_files() -> dict:
+    """Return {memory: str, user: str} — empty strings if files don't exist yet."""
+    _APEX_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    m = _MEMORY_FILE.read_text() if _MEMORY_FILE.exists() else ""
+    u = _USER_FILE.read_text() if _USER_FILE.exists() else ""
+    return {"memory": m.strip(), "user": u.strip()}
+
+
+def save_memory_entry(
+    target: str,
+    action: str,
+    content: str,
+    old_text: str = None,
+) -> str:
+    """Mutate one of the memory files. Returns a human-readable result string."""
+    path = _MEMORY_FILE if target == "memory" else _USER_FILE
+    limit = _MEMORY_LIMIT if target == "memory" else _USER_LIMIT
+
+    if action == "add" and _INJECTION_PATTERNS.search(content or ""):
+        return "Rejected: content matches security pattern."
+
+    _APEX_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    current = path.read_text().strip() if path.exists() else ""
+
+    if action == "add":
+        entry = (content or "").strip()
+        if not entry:
+            return "No content to add."
+        if entry in current:
+            return "Duplicate — entry already exists."
+        separator = " § " if current else ""
+        proposed = (current + separator + entry).strip()
+        if len(proposed) > limit:
+            parts = [p.strip() for p in current.split("§") if p.strip()]
+            while parts and len(" § ".join(parts) + " § " + entry) > limit:
+                parts.pop(0)
+            proposed = (" § ".join(parts) + (" § " if parts else "") + entry).strip(" §")
+        path.write_text(proposed)
+        return f"Added. [{len(proposed)}/{limit} chars used]"
+
+    if action == "replace":
+        if not old_text:
+            return "old_text required for replace."
+        if old_text not in current:
+            return f"Not found: {old_text!r}"
+        proposed = current.replace(old_text, (content or "").strip(), 1).strip()
+        if len(proposed) > limit:
+            return f"Too long after replace: {len(proposed)}/{limit} chars."
+        path.write_text(proposed)
+        return "Replaced."
+
+    if action == "remove":
+        if not old_text:
+            return "old_text required for remove."
+        if old_text not in current:
+            return f"Not found: {old_text!r}"
+        parts = [p.strip() for p in current.split("§") if p.strip() and old_text not in p]
+        path.write_text(" § ".join(parts))
+        return "Removed."
+
+    return f"Unknown action: {action!r}"
