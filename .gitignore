@@ -15,3 +15,6 @@ secrets/
 
 # Local data
 *.db
+
+# Claude Code local config (settings, worktrees)
+.claude/
