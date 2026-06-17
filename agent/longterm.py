@@ -410,7 +410,7 @@ def search_turns(query: str, limit: int = 20, session_id: int | None = None) -> 
 import re as _re
 from pathlib import Path as _Path
 
-_APEX_MEMORY_DIR = _Path.home() / ".apex" / "memory"
+_APEX_MEMORY_DIR = _Path(getattr(__import__("config"), "VAULT_PATH", "~/.apex/memory")).expanduser() / "Memory"
 _MEMORY_FILE = _APEX_MEMORY_DIR / "APEX_MEMORY.md"
 _USER_FILE = _APEX_MEMORY_DIR / "APEX_USER.md"
 _MEMORY_LIMIT = 2200

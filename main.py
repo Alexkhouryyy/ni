@@ -145,6 +145,10 @@ def main():
     if n_skills:
         print(f"[Skills] Loaded {n_skills} skill(s).")
 
+    # Obsidian vault — create structure + migrate memory files on first run
+    from agent import vault as _vault_mod
+    print(f"[Vault] {_vault_mod.init_vault()}")
+
     # Knowledge base — ensure schema, optionally trigger background indexing
     from agent import knowledge
     knowledge.init_db()

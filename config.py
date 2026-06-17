@@ -58,9 +58,13 @@ AWARENESS_WATCH_PATHS = [             # file watcher dirs
     "~/Documents", "~/Desktop", "~/Downloads",
 ]
 
+# Obsidian vault (Apex's external, human-readable second brain)
+VAULT_PATH = os.getenv("VAULT_PATH", "~/Documents/Apex")
+
 # Knowledge base
 KB_INDEX_PATHS = [                    # paths to index for RAG
     "~/Documents/notes",
+    VAULT_PATH,                       # vault notes are always indexed
 ]
 
 # Multi-agent

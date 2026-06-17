@@ -76,6 +76,10 @@ When the user mentions a PERSON, PROJECT, PLACE, or recurring CONCEPT — call e
 When they describe a relationship ("Sam is my co-founder", "the launch depends on the backend"), \
 call entity_relate. When asked about someone/something, call entity_query first to load the graph context. \
 Build the graph as you talk — it's how you remember structurally.
+- **apex_note**: Obsidian vault (~/Documents/Apex) — the human-readable second brain. \
+Use 'write' to create a permanent note about anything worth capturing (research, decisions, summaries). \
+Use 'daily' to log observations to today's dated note. Use 'entity' to mirror a knowledge-graph node \
+as a browsable note. The vault can be opened in Obsidian to see everything as a linked graph.
 - **reflect_now / list_reflections / apply_reflection**: Closed-loop learning. \
 You consolidate the day's events nightly via a cron — but if the user asks "what did you learn?" \
 or "review the week", run reflect_now and present the pending reflections. \
@@ -918,6 +922,54 @@ TOOLS = [
             "required": ["action"],
         },
     },
+    # --- Obsidian vault ---
+    {
+        "name": "apex_note",
+        "description": (
+            "Write or append to a note in the Obsidian vault — Apex's human-readable second brain. "
+            "Use 'write' to create/overwrite a note (supports wikilinks and tags). "
+            "Use 'append' to add a paragraph to an existing note. "
+            "Use 'daily' to append an observation to today's daily note. "
+            "Use 'list' to see what notes exist in a folder. "
+            "Use 'entity' to mirror a knowledge-graph entity as a navigable note. "
+            "The vault lives at ~/Documents/Apex and can be opened directly in Obsidian."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["write", "append", "daily", "list", "entity"],
+                },
+                "title": {"type": "string", "description": "Note title (filename without .md)"},
+                "content": {"type": "string", "description": "Markdown body text"},
+                "folder": {
+                    "type": "string",
+                    "description": "Vault subfolder: Notes (default), People, Projects, Daily, Skills",
+                    "default": "Notes",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "YAML frontmatter tags",
+                },
+                "links": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Wikilink targets (other note titles) to include in a See-also section",
+                },
+                "entity_kind": {
+                    "type": "string",
+                    "description": "Entity kind for 'entity' action: person, project, company, concept, etc.",
+                },
+                "entity_properties": {
+                    "type": "object",
+                    "description": "Key-value properties for 'entity' action",
+                },
+            },
+            "required": ["action"],
+        },
+    },
     # --- Skills registry ---
     {
         "name": "list_skills",
@@ -1271,6 +1323,31 @@ def _execute_tool(name: str, inputs: dict) -> str:
             from agent import skill_md as _skill_md
             return _skill_md.manage(**{k: inputs.get(k) for k in
                 ("action", "name", "description", "content", "old_text", "new_text")})
+
+        elif name == "apex_note":
+            from agent import vault as _vault
+            action = inputs.get("action", "write")
+            if action == "write":
+                return _vault.write_note(
+                    inputs["title"], inputs.get("content", ""),
+                    folder=inputs.get("folder", "Notes"),
+                    tags=inputs.get("tags"), links=inputs.get("links"),
+                )
+            elif action == "append":
+                return _vault.append_note(
+                    inputs["title"], inputs.get("content", ""),
+                    folder=inputs.get("folder", "Notes"),
+                )
+            elif action == "daily":
+                return _vault.append_daily(inputs.get("content", ""))
+            elif action == "list":
+                return json.dumps(_vault.list_notes(inputs.get("folder")), indent=2)
+            elif action == "entity":
+                return _vault.entity_to_note(
+                    inputs["title"],
+                    inputs.get("entity_kind", "concept"),
+                    inputs.get("entity_properties") or {},
+                )
 
         # --- Skills registry ---
         elif name == "list_skills":
