@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, Sequence } from "remotion";
+import { AbsoluteFill, Audio, Sequence, staticFile } from "remotion";
 import { Background } from "./components/Background";
 import { DarkOpening } from "./scenes/DarkOpening";
 import { LogoReveal } from "./scenes/LogoReveal";
@@ -47,6 +47,7 @@ export const TRAILER_DURATION =
 export const Trailer: React.FC = () => {
   return (
     <AbsoluteFill style={{ backgroundColor: "#04060d" }}>
+      <Audio src={staticFile("music.mp3")} volume={1} />
       <Background />
       {SCENES.map(({ comp: Comp, dur }, i) => (
         <Sequence key={i} from={STARTS[i]} durationInFrames={dur}>
