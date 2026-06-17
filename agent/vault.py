@@ -81,8 +81,19 @@ def write_note(
     tags: list[str] = None,
     links: list[str] = None,
     extra_fm: dict = None,
+    _bypass_approval: bool = False,
 ) -> str:
     """Create or overwrite a note. Returns a one-line status string."""
+    # Write-approval gate: stage instead of writing when enabled.
+    if not _bypass_approval and getattr(config, "MEMORY_WRITE_APPROVAL", False):
+        try:
+            from agent import approvals as _appr
+            return _appr.stage("note", {
+                "title": title, "content": content, "folder": folder,
+                "tags": tags, "links": links,
+            })
+        except Exception:
+            pass
     _ensure()
     path = _note_path(title, folder)
     today = time.strftime("%Y-%m-%d")

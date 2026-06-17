@@ -20,6 +20,11 @@ CURATOR_MIN_IDLE_HOURS = 2
 CURATOR_STALE_DAYS = 30
 CURATOR_ARCHIVE_DAYS = 90
 
+# Write-approval gate — when True, memory/note/skill writes are staged for the
+# user to approve from the dashboard instead of being applied immediately.
+MEMORY_WRITE_APPROVAL = os.getenv("MEMORY_WRITE_APPROVAL", "false").lower() in {"1", "true", "yes"}
+SKILL_WRITE_APPROVAL = os.getenv("SKILL_WRITE_APPROVAL", "false").lower() in {"1", "true", "yes"}
+
 # Voice
 WHISPER_MODEL = "base"          # tiny/base/small/medium/large
 WHISPER_DEVICE = "cpu"          # cpu or cuda

@@ -71,6 +71,7 @@ def main():
     from agent import perception as _perc_mod; _perc_mod.init_db()
     from agent import cortex as _cortex_mod; _cortex_mod.init_db()
     from agent import skill_forge as _forge_mod; _forge_mod.init_db()
+    from agent import approvals as _appr_init; _appr_init.init_db()
     session_id = longterm.start_session()
     telemetry.set_session(session_id)
     print(f"[Memory] Session #{session_id} started. DB: {longterm.DB_PATH}")
@@ -300,6 +301,8 @@ def main():
             from agent import notify as _notify_ref
             _cortex_mod.set_notify_fn(_notify_ref.notify)
             _forge_mod.set_notify_fn(_notify_ref.notify)
+            from agent import approvals as _appr_mod
+            _appr_mod.set_notify_fn(_notify_ref.notify)
         except Exception:
             pass
         print("[Cortex] Autonomous cortex active (trusted allowlist mode).")

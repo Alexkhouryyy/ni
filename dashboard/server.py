@@ -931,6 +931,34 @@ def forged_tools_reject(tool_id: int):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/staged-writes")
+def staged_writes_list():
+    """List memory/note/skill writes awaiting user approval."""
+    try:
+        from agent import approvals as _appr
+        return {"writes": _appr.list_pending("pending")}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/staged-writes/{write_id}/approve")
+def staged_writes_approve(write_id: str):
+    try:
+        from agent import approvals as _appr
+        return {"ok": True, "result": _appr.approve(write_id)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/staged-writes/{write_id}/reject")
+def staged_writes_reject(write_id: str):
+    try:
+        from agent import approvals as _appr
+        return {"ok": True, "result": _appr.reject(write_id)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/api/world-state")
 def world_state_get():
     """Current world state synthesized by the world model."""

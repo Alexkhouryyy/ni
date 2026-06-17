@@ -53,8 +53,20 @@ def manage(
     content: str = None,
     old_text: str = None,
     new_text: str = None,
+    _bypass_approval: bool = False,
 ) -> str:
     """Dispatch a skill_manage action. Returns a string result."""
+    # Write-approval gate: stage skill creation when enabled.
+    if action == "create" and not _bypass_approval:
+        try:
+            import config as _cfg
+            if getattr(_cfg, "SKILL_WRITE_APPROVAL", False):
+                from agent import approvals as _appr
+                return _appr.stage("skill", {
+                    "name": name, "description": description, "content": content,
+                })
+        except Exception:
+            pass
     if action == "list":
         skills = list_skills()
         if not skills:

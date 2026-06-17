@@ -435,8 +435,22 @@ def save_memory_entry(
     action: str,
     content: str,
     old_text: str = None,
+    _bypass_approval: bool = False,
 ) -> str:
     """Mutate one of the memory files. Returns a human-readable result string."""
+    # Write-approval gate: stage instead of applying when enabled.
+    if not _bypass_approval:
+        try:
+            import config as _cfg
+            if getattr(_cfg, "MEMORY_WRITE_APPROVAL", False):
+                from agent import approvals as _appr
+                return _appr.stage("memory", {
+                    "target": target, "action": action,
+                    "content": content, "old_text": old_text,
+                })
+        except Exception:
+            pass
+
     path = _MEMORY_FILE if target == "memory" else _USER_FILE
     limit = _MEMORY_LIMIT if target == "memory" else _USER_LIMIT
 
