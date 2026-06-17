@@ -1,163 +1,133 @@
 # Set up Apex on Oracle Cloud Free Tier (always-on brain)
 
 Oracle Cloud's Always Free tier gives you a **2 OCPU / 12 GB RAM Ampere A1 VM —
-genuinely free forever**. This is the recommended host for the autonomous cortex
-so Apex never sleeps.
+genuinely free forever**. This is the always-on host for Apex so the autonomous
+cortex, scheduler, and dashboard never sleep.
 
 ---
 
-## 1. Create your free Oracle Cloud account
+## 1. Create your Oracle Cloud account
 
-1. Go to `cloud.oracle.com` → **Start for free**
-2. Enter name, email, region (pick one near you), credit card (verification only — not charged)
-3. Confirm email → account created
+1. Go to `cloud.oracle.com` -> **Start for free**
+2. Enter name, email, region (pick one near you — US East or UK South are reliable)
+3. Credit card required for verification only — you will not be charged
+4. Confirm email -> account created
 
 ---
 
 ## 2. Provision the free VM
 
-1. Oracle Cloud Console → **Compute → Instances → Create Instance**
-2. Click **Change image** → **Ubuntu** → Ubuntu 22.04 LTS (aarch64) ✓
-3. Click **Change shape** → **Ampere** → `VM.Standard.A1.Flex`
+1. Oracle Cloud Console -> **Compute -> Instances -> Create Instance**
+2. Click **Change image** -> **Ubuntu** -> Ubuntu 22.04 LTS (aarch64)
+3. Click **Change shape** -> **Ampere** -> `VM.Standard.A1.Flex`
    - Set **OCPUs: 2**, **Memory: 12 GB** (both free-tier eligible)
-4. Under **Networking**: leave defaults (new VCN + public subnet gets created)
-5. **Add SSH keys**: upload your `~/.ssh/id_ed25519.pub` (or generate a new pair)
-6. Click **Create**
+4. **Networking**: leave defaults (new VCN + public subnet is fine)
+5. **Add SSH keys**: paste your `~/.ssh/id_ed25519.pub` (generate with `ssh-keygen -t ed25519` if needed)
+6. Click **Create** — VM boots in about 2 minutes
 
-The VM boots in ~2 minutes. Note the **public IP** from the instance details page.
+Note the **public IP** from the instance details page.
 
 ---
 
-## 3. Open firewall for Tailscale (and close everything else)
+## 3. Run the one-command bootstrap (does everything else automatically)
 
-In Oracle Console → **Networking → Virtual Cloud Networks → your VCN →
-Security Lists → Default Security List**:
+SSH in once, then run the bootstrap script. It installs Tailscale, clones Apex,
+sets up the firewall, creates the systemd service, and starts Apex.
 
-- **Ingress rules**: keep only SSH (port 22). Remove any rules for port 80/443.
-- Apex will be reached via Tailscale, not directly — no public port needed.
-
-Also open the OS firewall on the VM:
 ```bash
-sudo iptables -F INPUT
-sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-sudo iptables -A INPUT -i lo -j ACCEPT
-sudo iptables -A INPUT -j DROP
-sudo netfilter-persistent save    # apt install iptables-persistent if needed
+# From your laptop — SSH into the Oracle VM
+ssh ubuntu@<oracle-public-ip>
+
+# On the Oracle VM — run the bootstrap (one command)
+curl -fsSL https://raw.githubusercontent.com/alexkhouryyy/ni/claude/brainstorm-project-ideas-asUsT/scripts/bootstrap-oracle.sh | bash
+```
+
+The script will **pause twice** and tell you exactly what to do:
+
+**Pause 1 — Tailscale auth:**
+It prints a URL. Open it in your browser, click Approve. Press Enter in the terminal.
+
+**Pause 2 — Transfer .env:**
+Run this from a SECOND terminal on your laptop (not the Oracle terminal):
+```bash
+scp ~/ni/.env ubuntu@<oracle-public-ip>:~/ni/.env
+```
+Then press Enter in the Oracle terminal.
+
+After those two steps the script finishes unattended. Apex starts automatically.
+
+---
+
+## 4. Verify Apex is running
+
+Once the bootstrap completes:
+```bash
+# Check service status
+systemctl status apex@ubuntu
+
+# Live logs
+journalctl -u apex@ubuntu -f
+
+# Open dashboard from your phone (on Tailscale)
+http://<oracle-tailscale-ip>:7860?token=YOUR_DASHBOARD_TOKEN
+```
+
+The Tailscale IP is printed by the bootstrap script. If Apex is running you will
+see the dashboard load even while your laptop is off.
+
+---
+
+## 5. Sync the Obsidian vault (laptop <-> cloud)
+
+The vault at `~/Documents/Apex` needs to stay in sync between your Windows laptop
+and the Oracle VM so Apex's notes are consistent everywhere.
+
+From your laptop, run:
+```bash
+# Push your laptop's vault to the cloud (after Tailscale is running on both)
+bash scripts/sync-vault.sh push
+
+# Pull the cloud vault to your laptop
+bash scripts/sync-vault.sh pull
+
+# Auto-push every 5 minutes (run in background while working)
+bash scripts/sync-vault.sh watch
+```
+
+If the script cannot find the Oracle VM automatically, set the IP explicitly:
+```bash
+ORACLE_IP=100.x.x.x bash scripts/sync-vault.sh push
 ```
 
 ---
 
-## 4. SSH in and install dependencies
+## 6. Keeping Apex up to date
 
+To pull new code onto the Oracle VM:
 ```bash
-ssh ubuntu@<your-oracle-ip>
-
-# System packages
-sudo apt update && sudo apt install -y git curl python3-pip python3-venv
-
-# uv (fast Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc   # reload PATH
-
-# Tailscale (connects VM to your private network)
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up   # opens auth URL — paste it in your browser
-```
-
-After `tailscale up`, your VM gets a Tailscale IP (e.g. `100.x.x.x`). From your
-laptop: `ssh ubuntu@$(tailscale ip -4)` — no public IP needed anymore.
-
----
-
-## 5. Clone Apex and configure
-
-```bash
-git clone https://github.com/alexkhouryyy/ni.git
-cd ni
-
-# Copy your .env from your laptop
-# On your LAPTOP: scp .env ubuntu@<tailscale-ip>:~/ni/.env
-
-# Install Python dependencies
-uv pip install -r requirements.txt
-```
-
-Test it boots:
-```bash
-uv run python main.py --text
-# Should print: Voice AI Agent ... Session #1 started.
-# Ctrl+C to exit
-```
-
----
-
-## 6. Install as a systemd service (auto-start on boot)
-
-```bash
-# Install the service file (substitute your username)
-sudo cp ~/ni/scripts/apex.service /etc/systemd/system/apex@ubuntu.service
-
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable apex@ubuntu
-sudo systemctl start apex@ubuntu
-
-# Verify it's running
-sudo systemctl status apex@ubuntu
-journalctl -u apex@ubuntu -f   # live logs
-```
-
-The `apex@ubuntu` service name is `apex@<username>` — it uses `%i` in the unit file
-to fill in the username so WorkingDirectory and ExecStart resolve correctly.
-
----
-
-## 7. Connect your laptop's awareness watchers (optional, hybrid mode)
-
-The cloud VM runs the always-on scheduler, cortex, and dashboard. Your laptop
-runs the screen/clipboard/file watchers and forwards events.
-
-On your **laptop**, start Apex normally:
-```bash
-uv run python main.py --text
-```
-
-Both instances share **the same Tailscale network** and the same `DASHBOARD_TOKEN`.
-Open `http://<oracle-tailscale-ip>:7860` in your browser (add `?token=whowantstobeking`).
-The laptop Apex and the cloud Apex have separate SQLite DBs for now — full
-brain-sync is a future milestone.
-
----
-
-## 8. Update PUBLIC_BASE_URL
-
-Now that your always-on host has a stable Tailscale address, set it in `.env`
-on the Oracle VM:
-
-```bash
-echo "PUBLIC_BASE_URL=http://$(tailscale ip -4):7860" >> ~/ni/.env
+ssh ubuntu@<oracle-tailscale-ip>
+cd ~/ni
+git pull origin claude/brainstorm-project-ideas-asUsT
 sudo systemctl restart apex@ubuntu
 ```
 
-Or if you have a Cloudflare named tunnel pointing at the Oracle VM, use the
-stable HTTPS URL instead.
+Or run the bootstrap script again — it detects an existing repo and just pulls.
 
 ---
 
-## Verification
+## Hybrid mode (laptop awareness + cloud always-on)
 
-```bash
-# From your phone (on WiFi or cellular), open:
-http://<oracle-tailscale-ip>:7860?token=whowantstobeking
+The Oracle VM handles: autonomous cortex, scheduler, dashboard, goals, reflections.
+Your laptop handles: screen watching, clipboard, microphone (awareness events).
 
-# Apex loads and responds even when your laptop is off ✓
-```
+Both share the same `DASHBOARD_TOKEN`. The laptop's Apex and the cloud's Apex
+run independently — the cloud is the always-on brain, the laptop is the perceptual layer.
 
-Check systemd survived a reboot:
-```bash
-sudo reboot
-# wait 30 seconds
-ssh ubuntu@<tailscale-ip>
-systemctl status apex@ubuntu   # should show active (running)
-```
+---
+
+## Verification checklist
+
+- [ ] `systemctl status apex@ubuntu` shows **active (running)**
+- [ ] Dashboard loads at `http://<tailscale-ip>:7860?token=...` from your phone on cellular (laptop off)
+- [ ] `sudo reboot` -> wait 30s -> `systemctl status apex@ubuntu` still running (auto-restart works)
+- [ ] `bash scripts/sync-vault.sh push` copies vault without errors
