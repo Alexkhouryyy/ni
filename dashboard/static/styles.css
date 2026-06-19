@@ -1667,3 +1667,48 @@ pre.md-pre code { background: none; border: none; padding: 0; }
   .cst-planet .cst-name { font-size: 9px; max-width: 64px; }
   .cst-sun { width: 70px; height: 70px; font-size: 12px; }
 }
+
+/* ── Constellation quick-ask strip on Command screen ── */
+.cst-quickask {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 40px;
+  padding: 8px 8px 8px 18px;
+  width: min(520px, 90vw);
+  backdrop-filter: blur(12px);
+  z-index: 20;
+  transition: border-color 0.2s;
+}
+.cst-quickask:focus-within { border-color: var(--accent); }
+.cst-qa-glyph { color: var(--accent-2); font-size: 1.05rem; flex-shrink: 0; }
+.cst-quickask input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 0.88rem;
+  outline: none;
+  min-width: 0;
+}
+.cst-quickask input::placeholder { color: var(--muted); }
+.cst-quickask button {
+  background: var(--accent);
+  border: none;
+  border-radius: 20px;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 16px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.cst-quickask button:hover { opacity: 0.85; }

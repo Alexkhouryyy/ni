@@ -229,6 +229,7 @@ const FEATURES = [
   { tab: 'selfmod',     icon: '✎', label: 'Self-Mod' },
   { tab: 'phone',       icon: '☎', label: 'Phone' },
   { tab: 'camera',      icon: '◉', label: 'Vision' },
+  { tab: 'constellation', icon: '✦', label: 'Constellation' },
 ];
 
 // World hub coordinates [lat, lng] — agent activity lights these up
@@ -478,6 +479,18 @@ async function loadCommand() {
     initGlobe();
     renderPlanetSelector();
     startCmdClock();
+    const _qaStrip = document.getElementById('cst-quickask');
+    if (_qaStrip) {
+      _qaStrip.addEventListener('submit', e => {
+        e.preventDefault();
+        const q = _qaStrip.querySelector('input').value.trim();
+        if (!q) return;
+        const qinput = document.getElementById('cst-question');
+        if (qinput) qinput.value = q;
+        _qaStrip.querySelector('input').value = '';
+        document.querySelector('.nav-btn[data-tab="constellation"]')?.click();
+      });
+    }
   }
   try {
     const [tel, goals, mems, tasks, refl, ents, subs, status] = await Promise.all([
