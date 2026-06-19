@@ -1069,6 +1069,18 @@ TOOLS = [
 ]
 
 
+def _broadcast_live_event(source: str, content: str) -> None:
+    """Best-effort broadcast to the dashboard live feed. Never raises."""
+    try:
+        import time as _t
+        from dashboard import server as _srv
+        _srv.ws_manager.broadcast_threadsafe({
+            "type": "event", "ts": _t.time(), "source": source, "content": content,
+        })
+    except Exception:
+        pass
+
+
 def _execute_tool(name: str, inputs: dict) -> str:
     """Dispatch a tool call and return its result as a string."""
     # Safety check before execution
@@ -1133,6 +1145,7 @@ def _execute_tool(name: str, inputs: dict) -> str:
             return files.find(inputs["pattern"], inputs.get("base", "."))
 
         elif name == "remember":
+            _broadcast_live_event("memory", f"Stored: {inputs['content'][:120]}")
             return longterm.remember(
                 inputs["content"],
                 kind=inputs.get("kind", "fact"),
@@ -1829,6 +1842,8 @@ class AgentCore:
 
                 memory.add_assistant(response_content)
                 final_text = this_text
+                if this_text and stop_reason == "end_turn":
+                    _broadcast_live_event("agent", this_text[:160].replace("\n", " "))
 
                 # Per-turn log for replay
                 try:
@@ -1850,6 +1865,7 @@ class AgentCore:
                         continue
                     print(f"[TOOL] {block.name}({json.dumps(block.input, ensure_ascii=False)[:120]})")
                     turn_tool_names.append(block.name)
+                    _broadcast_live_event("tool", f"{block.name}({json.dumps(block.input, ensure_ascii=False)[:80]})")
                     result_str = _execute_tool(block.name, block.input)
                     tool_results.append(_make_tool_result_content(block.name, block.id, result_str))
                     try:
