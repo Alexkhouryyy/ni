@@ -1821,28 +1821,69 @@ async function loadConstellation() {
   }
 }
 
+// Each pack rides its own concentric orbital band, revolving at its own speed.
+const _CST_BANDS = {
+  mind:  { factor: 0.32, dur: 48 },   // inner
+  life:  { factor: 0.52, dur: 72 },   // mid
+  maker: { factor: 0.72, dur: 96 },   // outer
+};
+
 function _cstRenderOrbit(planets) {
   const orbit = document.getElementById('cst-orbit');
   if (!orbit) return;
-  orbit.querySelectorAll('.cst-planet').forEach(n => n.remove());
-  const n = planets.length;
-  planets.forEach((p, i) => {
-    const angle = (i / n) * 2 * Math.PI - Math.PI / 2;  // start at 12 o'clock
-    const R = 42;  // % of half-container
-    const cx = 50 + R * Math.cos(angle);
-    const cy = 50 + R * Math.sin(angle);
+  orbit.querySelectorAll('.cst-orbiter').forEach(n => n.remove());
+
+  // Group by pack so each planet knows its index within its band.
+  const byPack = {};
+  planets.forEach(p => { (byPack[p.pack] = byPack[p.pack] || []).push(p); });
+
+  planets.forEach(p => {
+    const band = _CST_BANDS[p.pack] || _CST_BANDS.life;
+    const siblings = byPack[p.pack];
+    const m = siblings.length;
+    const k = siblings.indexOf(p);
+
+    const orbiter = document.createElement('div');
+    orbiter.className = 'cst-orbiter';
+    orbiter.dataset.pack = p.pack;
+    orbiter.style.setProperty('--dur', band.dur + 's');
+    // negative delay = pre-advanced animation → planets start spread around the band
+    orbiter.style.setProperty('--phase', `calc(${band.dur}s / -${m} * ${k})`);
+
+    const arm = document.createElement('div');
+    arm.className = 'cst-arm';
+
     const node = document.createElement('button');
     node.type = 'button';
     node.className = `cst-planet pack-${p.pack}`;
     node.dataset.key = p.key;
-    node.style.left = cx + '%';
-    node.style.top = cy + '%';
     node.title = `${p.display} (${p.codename}) — ${p.domain}\nClick to chat`;
     node.innerHTML =
       `<span class="cst-glyph">${p.glyph || '✦'}</span>` +
       `<span class="cst-name">${escapeHTML(p.display)}</span>`;
     node.addEventListener('click', () => _cstOpenChat(p.key));
-    orbit.appendChild(node);
+
+    arm.appendChild(node);
+    orbiter.appendChild(arm);
+    orbit.appendChild(orbiter);
+  });
+
+  _cstSizeOrbits();
+  if (!orbit._cstResizeObs) {
+    orbit._cstResizeObs = new ResizeObserver(() => _cstSizeOrbits());
+    orbit._cstResizeObs.observe(orbit);
+  }
+}
+
+// Radii are pixel-based so they track the square container down to mobile.
+function _cstSizeOrbits() {
+  const orbit = document.getElementById('cst-orbit');
+  if (!orbit) return;
+  const half = orbit.clientWidth / 2;
+  orbit.querySelectorAll('.cst-orbiter').forEach(orbiter => {
+    const band = _CST_BANDS[orbiter.dataset.pack] || _CST_BANDS.life;
+    const arm = orbiter.querySelector('.cst-arm');
+    if (arm) arm.style.setProperty('--orbit', (half * band.factor) + 'px');
   });
 }
 
@@ -1865,6 +1906,7 @@ async function runConstellation() {
   const btn = document.getElementById('cst-convene');
   btn.disabled = true; btn.textContent = 'Convening…';
   document.getElementById('cst-sun').classList.add('active');
+  document.getElementById('cst-orbit')?.classList.add('convening');
   try {
     const result = await api('/api/constellation', { method: 'POST', body: { question: q } });
     if (cstRunning) _cstDone(result);  // fallback if WS event didn't arrive
@@ -1922,6 +1964,7 @@ function _cstDone(data) {
   const btn = document.getElementById('cst-convene');
   if (btn) { btn.disabled = false; btn.textContent = 'Convene'; }
   document.getElementById('cst-sun').classList.remove('active');
+  document.getElementById('cst-orbit')?.classList.remove('convening');
 
   const verdict = document.getElementById('cst-verdict');
   if (verdict) {
@@ -1955,6 +1998,7 @@ function _cstError(err) {
   const btn = document.getElementById('cst-convene');
   if (btn) { btn.disabled = false; btn.textContent = 'Convene'; }
   document.getElementById('cst-sun')?.classList.remove('active');
+  document.getElementById('cst-orbit')?.classList.remove('convening');
   const progress = document.getElementById('cst-progress');
   if (progress) {
     const d = document.createElement('div');

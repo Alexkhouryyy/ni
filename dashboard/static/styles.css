@@ -1543,6 +1543,41 @@ pre.md-pre code { background: none; border: none; padding: 0; }
 }
 @keyframes cstspin { to { transform: translate(-50%, -50%) rotate(360deg); } }
 
+/* ── concentric pack-colored orbital bands ── */
+.cst-band {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  border-radius: 50%; pointer-events: none;
+  box-shadow: inset 0 0 50px rgba(108,204,255,0.04);
+}
+.cst-band.inner { width: 32%; height: 32%; border: 1px dashed rgba(138,124,255,0.30); }  /* mind  · factor 0.32 */
+.cst-band.mid   { width: 52%; height: 52%; border: 1px dashed rgba(255,181,71,0.26); }   /* life  · factor 0.52 */
+.cst-band.outer { width: 72%; height: 72%; border: 1px dashed rgba(61,220,151,0.24); }   /* maker · factor 0.72 */
+
+/* ── orbital motion: orbiter revolves, planet counter-rotates to stay upright ── */
+.cst-orbiter {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 2;
+  animation: cst-revolve var(--dur, 72s) linear infinite;
+  animation-delay: var(--phase, 0s);
+}
+.cst-arm { position: absolute; left: 0; top: 0; transform: translateY(calc(-1 * var(--orbit, 120px))); }
+@keyframes cst-revolve { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+@keyframes cst-counter {
+  from { transform: translate(-50%, -50%) rotate(0); }
+  to   { transform: translate(-50%, -50%) rotate(-360deg); }
+}
+.cst-planet {
+  animation: cst-counter var(--dur, 72s) linear infinite;
+  animation-delay: var(--phase, 0s);
+}
+/* hover a planet → it + its orbit freeze so it's easy to click */
+.cst-orbiter:hover, .cst-orbiter:hover .cst-planet { animation-play-state: paused; }
+/* a convene freezes the whole system so the eye can read who lit up */
+.cst-orbit.convening .cst-orbiter,
+.cst-orbit.convening .cst-planet { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .cst-orbiter, .cst-planet, .cst-ring, .cst-band { animation-play-state: paused; }
+}
+
 .cst-sun {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: 92px; height: 92px; border-radius: 50%; z-index: 3;
@@ -1562,10 +1597,10 @@ pre.md-pre code { background: none; border: none; padding: 0; }
 }
 
 .cst-planet {
-  position: absolute; transform: translate(-50%, -50%); z-index: 2;
+  position: absolute; left: 0; top: 0; z-index: 2;
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   background: none; border: none; cursor: pointer; padding: 0;
-  transition: transform .2s ease, opacity .3s ease;
+  transition: opacity .3s ease;
 }
 .cst-planet .cst-glyph {
   width: 50px; height: 50px; border-radius: 50%;
@@ -1577,7 +1612,7 @@ pre.md-pre code { background: none; border: none; padding: 0; }
   font-size: 11px; color: var(--text-mute); white-space: nowrap;
   max-width: 92px; overflow: hidden; text-overflow: ellipsis;
 }
-.cst-planet:hover { transform: translate(-50%, -50%) scale(1.12); }
+.cst-planet:hover .cst-glyph { transform: scale(1.14); border-color: var(--accent); }
 .cst-planet:hover .cst-name { color: var(--text); }
 
 /* pack accent colors */
