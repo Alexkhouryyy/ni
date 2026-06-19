@@ -23,7 +23,7 @@ import config
 
 VAULT_DIR: Path = Path(getattr(config, "VAULT_PATH", "~/Documents/Apex")).expanduser()
 
-_FOLDERS = ["Memory", "Notes", "People", "Projects", "Daily", "Skills"]
+_FOLDERS = ["Memory", "Notes", "People", "Projects", "Daily", "Skills", "Planets"]
 
 _SAFE_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -198,7 +198,8 @@ def init_vault() -> str:
             "| People/ | One note per person Apex knows about |\n"
             "| Projects/ | One note per project |\n"
             "| Daily/ | Daily observations from Apex (one note per day) |\n"
-            "| Skills/ | Copies of procedural skills for browsing |\n\n"
+            "| Skills/ | Copies of procedural skills for browsing |\n"
+            "| Planets/ | One journal per Constellation expert — what each specialist has learned |\n\n"
             "Open this folder in Obsidian to see Apex's mind as a graph.\n"
         )
 

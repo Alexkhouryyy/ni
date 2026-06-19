@@ -20,6 +20,19 @@ CURATOR_MIN_IDLE_HOURS = 2
 CURATOR_STALE_DAYS = 30
 CURATOR_ARCHIVE_DAYS = 90
 
+# The Constellation — a standing panel of 12 domain-expert "planets" orbiting the
+# core Apex (the "Sun"). On a query, the relevant planets answer in parallel from
+# their own expertise + persistent memory, and the Sun synthesizes one answer.
+# AUTO is off by default: when on, only high-stakes queries auto-convene (the
+# heuristic router returns no planets for everything else, so cost stays at zero).
+CONSTELLATION_AUTO          = os.getenv("CONSTELLATION_AUTO", "false").lower() in {"1", "true", "yes"}
+CONSTELLATION_LEARN         = os.getenv("CONSTELLATION_LEARN", "true").lower() in {"1", "true", "yes"}
+CONSTELLATION_MAX_PLANETS   = int(os.getenv("CONSTELLATION_MAX_PLANETS", "4"))
+CONSTELLATION_PLANET_MODEL  = os.getenv("CONSTELLATION_PLANET_MODEL", "claude-sonnet-4-6")
+CONSTELLATION_SYNTH_MODEL   = os.getenv("CONSTELLATION_SYNTH_MODEL", AGENT_MODEL)
+CONSTELLATION_MEMORY_MODEL  = os.getenv("CONSTELLATION_MEMORY_MODEL", PROACTIVE_MODEL)
+CONSTELLATION_BRIEFING_MAXCHARS = int(os.getenv("CONSTELLATION_BRIEFING_MAXCHARS", "1500"))
+
 # Write-approval gate — when True, memory/note/skill writes are staged for the
 # user to approve from the dashboard instead of being applied immediately.
 MEMORY_WRITE_APPROVAL = os.getenv("MEMORY_WRITE_APPROVAL", "false").lower() in {"1", "true", "yes"}

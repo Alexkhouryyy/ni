@@ -150,6 +150,10 @@ def main():
     from agent import vault as _vault_mod
     print(f"[Vault] {_vault_mod.init_vault()}")
 
+    # The Constellation — 12 persistent domain-expert planets + their vault journals
+    from agent import constellation as _constellation_mod
+    print(f"[Constellation] {_constellation_mod.init()}")
+
     # Knowledge base — ensure schema, optionally trigger background indexing
     from agent import knowledge
     knowledge.init_db()
@@ -526,6 +530,28 @@ def main():
                     tag = "Opening" if entry["round"] == 0 else f"Debate {entry['round']}"
                     print(f"\n--- {entry['label']} ({tag}) ---\n{entry['text']}\n")
                 speak(f"COUNCIL VERDICT (members: {', '.join(result.members)}):\n\n{result.final_answer}")
+            continue
+
+        # /experts command — convene the Constellation of 12 domain-expert planets
+        if user_input.startswith("/experts"):
+            parts = user_input.split(None, 1)
+            if len(parts) < 2:
+                speak("Usage: /experts <question>")
+            else:
+                from agent import constellation
+                print("\n[Constellation convening...]\n")
+                result = constellation.convene(
+                    parts[1].strip(),
+                    on_progress=lambda m: print(f"  [constellation] {m}"),
+                    on_answer=lambda key, text: print(
+                        f"\n--- {constellation.PLANETS[key].codename} "
+                        f"({constellation.PLANETS[key].display}) ---\n{text}\n"),
+                )
+                experts = ", ".join(p["display"] for p in result.planets)
+                verdict = f"CONSTELLATION VERDICT (experts: {experts}):\n\n{result.final_answer}"
+                if result.disagreement and result.disagreement.lower() != "the council agreed":
+                    verdict += f"\n\nWhere they split: {result.disagreement}"
+                speak(verdict)
             continue
 
         # Determine if this warrants deep thinking

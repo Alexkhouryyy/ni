@@ -94,6 +94,14 @@ token usage, cache performance, or wants to debug what happened in a past sessio
 other, and a chair synthesizes the best answer. Use for high-stakes or contested questions \
 where one model isn't enough: hard decisions, design tradeoffs, disputed facts. It is slower \
 and costlier than a normal answer, so reserve it for questions that genuinely warrant it.
+- **consult_experts**: Convene the Constellation — a standing panel of 12 domain-expert \
+specialists (Finance, Health, Career, Relationships, Engineer, Researcher, Writer, Designer, \
+Strategist, Analyst, Devil's Advocate, Synthesizer), each with its own persistent memory. The \
+relevant experts answer in parallel from their domain and their takes are synthesized into one \
+answer that notes where they agreed and split. Use for big, multi-domain, or contested life and \
+work decisions ("should I…", career/money/health choices, design tradeoffs). Differs from \
+council (which is the same question to different model vendors): this is different *domain experts* \
+who each remember you over time.
 - **read_file**: Read a file
 - **write_file**: Create or overwrite a file
 - **append_file**: Append to a file
@@ -1030,6 +1038,34 @@ TOOLS = [
             "required": ["question"],
         },
     },
+    # --- The Constellation: 12 persistent domain-expert planets ---
+    {
+        "name": "consult_experts",
+        "description": (
+            "Convene the Constellation — a standing panel of 12 domain-expert specialists "
+            "(Finance, Health, Career, Relationships, Engineer, Researcher, Writer, Designer, "
+            "Strategist, Analyst, Devil's Advocate, Synthesizer), each with its own persistent "
+            "memory. The relevant experts answer in parallel from their domain; their takes are "
+            "synthesized into one answer noting agreement and disagreement. Use for big, "
+            "multi-domain, or contested decisions ('should I…', life/money/health/career choices, "
+            "design tradeoffs). Pass `planets` to pick experts, or omit to auto-select."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "The question for the experts."},
+                "planets": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Optional expert keys, e.g. ['finance','career','devils_advocate']. "
+                        "Omit to auto-select the most relevant experts."
+                    ),
+                },
+            },
+            "required": ["question"],
+        },
+    },
 ]
 
 
@@ -1374,6 +1410,24 @@ def _execute_tool(name: str, inputs: dict) -> str:
                 "final_answer": result.final_answer,
             }, indent=2)
 
+        # --- The Constellation: domain-expert panel ---
+        elif name == "consult_experts":
+            from agent import constellation as _constellation
+            keys = inputs.get("planets") or None
+            if keys:
+                chosen = [_constellation.PLANETS[k] for k in keys if k in _constellation.PLANETS]
+                planets = chosen or _constellation.route(inputs["question"], force=True)
+            else:
+                planets = _constellation.route(inputs["question"], force=True)
+            result = _constellation.convene(inputs["question"], planets=planets)
+            return json.dumps({
+                "experts": [p["display"] for p in result.planets],
+                "final_answer": result.final_answer,
+                "confidence": result.confidence,
+                "disagreement": result.disagreement,
+                "takes": result.takes,
+            }, indent=2)
+
         else:
             # Try dynamic tools registered via self_mod
             dyn_result = self_mod.dispatch(name, inputs)
@@ -1666,6 +1720,25 @@ class AgentCore:
                     user_content.append({"type": "text", "text": f"[Current screen — {size[0]}x{size[1]}]"})
                 except Exception as e:
                     user_content.append({"type": "text", "text": f"[Screenshot unavailable: {e}]"})
+
+            # Constellation auto-convene: for high-stakes turns on the main channel,
+            # consult the relevant expert planets and fold their synthesized briefing
+            # into THIS user turn (user content, never a system block — keeps the
+            # ephemeral prefix cache warm). route() returns [] for ordinary queries,
+            # so this is zero-cost on everything but genuine decisions.
+            if (channel_id is None
+                    and getattr(config, "CONSTELLATION_AUTO", False)
+                    and not _budget.check()):
+                try:
+                    from agent import constellation as _constellation
+                    _selected = _constellation.route(user_text)
+                    if _selected:
+                        _briefing = _constellation.convene_briefing(
+                            user_text, _selected, self.anthropic)
+                        if _briefing:
+                            user_content.append({"type": "text", "text": _briefing})
+                except Exception as _e:
+                    print(f"[Constellation] auto-convene skipped: {_e}")
 
             user_content.append({"type": "text", "text": user_text})
             memory.add_user(user_content)

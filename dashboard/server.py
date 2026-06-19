@@ -1160,6 +1160,73 @@ async def council_endpoint(request: Request):
     return {"ok": True, **payload}
 
 
+# --- The Constellation: 12 domain-expert planets ---
+@app.get("/api/constellation/roster")
+async def constellation_roster():
+    from agent import constellation
+    return {
+        "planets": constellation.list_planets(),
+        "max_planets": getattr(config, "CONSTELLATION_MAX_PLANETS", 4),
+        "auto": getattr(config, "CONSTELLATION_AUTO", False),
+    }
+
+
+@app.post("/api/constellation")
+async def constellation_endpoint(request: Request):
+    body = await request.json()
+    question = (body.get("question") or "").strip()
+    keys = body.get("planets") or None
+    if not question:
+        return JSONResponse({"error": "empty question"}, status_code=400)
+
+    from agent import constellation
+
+    def _progress(msg: str):
+        ws_manager.broadcast_threadsafe({"type": "constellation_progress", "message": msg})
+
+    def _answer(key, text):
+        ws_manager.broadcast_threadsafe(
+            {"type": "constellation_answer", "key": key, "text": text}
+        )
+
+    def _planet_start(roster):
+        ws_manager.broadcast_threadsafe(
+            {"type": "constellation_start", "planets": roster}
+        )
+
+    if keys:
+        chosen = [constellation.PLANETS[k] for k in keys if k in constellation.PLANETS]
+        planets = chosen or constellation.route(question, force=True)
+    else:
+        planets = constellation.route(question, force=True)
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            None,
+            lambda: constellation.convene(
+                question, planets=planets, on_progress=_progress,
+                on_answer=_answer, on_planet_start=_planet_start,
+            ),
+        )
+    except Exception as e:
+        ws_manager.broadcast_threadsafe({"type": "constellation_error", "error": str(e)})
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    payload = {
+        "question": result.question,
+        "experts": [p["display"] for p in result.planets],
+        "planets": result.planets,
+        "final_answer": result.final_answer,
+        "takes": result.takes,
+        "confidence": result.confidence,
+        "confidence_note": result.confidence_note,
+        "disagreement": result.disagreement,
+    }
+    ws_manager.broadcast_threadsafe({"type": "constellation_done", **payload})
+    return {"ok": True, **payload}
+
+
 # --- Voice: speech-to-text (OpenAI Whisper) ---
 @app.post("/api/transcribe")
 async def transcribe_endpoint(file: UploadFile = File(...)):
