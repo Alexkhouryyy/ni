@@ -1873,6 +1873,12 @@ function _cstRenderOrbit(planets) {
     orbit._cstResizeObs = new ResizeObserver(() => _cstSizeOrbits());
     orbit._cstResizeObs.observe(orbit);
   }
+
+  // Upgrade to the real 3D solar system when WebGL + the module are available.
+  // On success the CSS orbit is hidden; on any failure it stays as the fallback.
+  if (window.Cst3D && window.Cst3D.build(planets)) {
+    document.querySelector('.cst-stage')?.classList.add('has-3d');
+  }
 }
 
 // Radii are pixel-based so they track the square container down to mobile.
@@ -1892,6 +1898,7 @@ function _cstSetAll(state) {
     node.classList.remove('active', 'dim', 'thinking', 'done');
     if (state === 'dim') node.classList.add('dim');
   });
+  window.Cst3D?.setAll(state);
 }
 
 async function runConstellation() {
@@ -1907,6 +1914,7 @@ async function runConstellation() {
   btn.disabled = true; btn.textContent = 'Convening…';
   document.getElementById('cst-sun').classList.add('active');
   document.getElementById('cst-orbit')?.classList.add('convening');
+  window.Cst3D?.setConvening(true);
   try {
     const result = await api('/api/constellation', { method: 'POST', body: { question: q } });
     if (cstRunning) _cstDone(result);  // fallback if WS event didn't arrive
@@ -1927,6 +1935,7 @@ function _cstProgress(msg) {
 
 function _cstStart(planets) {
   _cstSetAll('dim');
+  window.Cst3D?.setStates((planets || []).map(p => p.key), 'thinking');
   const takes = document.getElementById('cst-takes');
   if (takes) takes.innerHTML = '';
   (planets || []).forEach(p => {
@@ -1950,6 +1959,7 @@ function _cstStart(planets) {
 function _cstAnswer(data) {
   const node = document.querySelector(`.cst-planet[data-key="${CSS.escape(data.key)}"]`);
   if (node) { node.classList.remove('thinking'); node.classList.add('done'); }
+  window.Cst3D?.setState(data.key, 'done');
   const card = document.querySelector(`.cst-take[data-key="${CSS.escape(data.key)}"]`);
   if (card) {
     const pill = card.querySelector('.council-pill');
@@ -1965,6 +1975,7 @@ function _cstDone(data) {
   if (btn) { btn.disabled = false; btn.textContent = 'Convene'; }
   document.getElementById('cst-sun').classList.remove('active');
   document.getElementById('cst-orbit')?.classList.remove('convening');
+  window.Cst3D?.setConvening(false);
 
   const verdict = document.getElementById('cst-verdict');
   if (verdict) {
@@ -1991,6 +2002,7 @@ function _cstDone(data) {
   document.querySelectorAll('.cst-take .council-pill.thinking').forEach(p => {
     p.classList.remove('thinking'); p.classList.add('skipped'); p.textContent = 'no response';
   });
+  window.Cst3D?.clearStates();
 }
 
 function _cstError(err) {
@@ -1999,6 +2011,7 @@ function _cstError(err) {
   if (btn) { btn.disabled = false; btn.textContent = 'Convene'; }
   document.getElementById('cst-sun')?.classList.remove('active');
   document.getElementById('cst-orbit')?.classList.remove('convening');
+  window.Cst3D?.setConvening(false);
   const progress = document.getElementById('cst-progress');
   if (progress) {
     const d = document.createElement('div');
@@ -2012,6 +2025,7 @@ function _cstError(err) {
 function _cstOpenChat(key) {
   const p = _cstPlanets.find(x => x.key === key);
   if (!p) return;
+  window.Cst3D?.select(key);
   _cstChatKey = key;
   _cstChatHistory = [];
   document.getElementById('cst-chat-title').innerHTML =
@@ -2029,8 +2043,12 @@ function _cstOpenChat(key) {
 function _cstCloseChat() {
   document.getElementById('cst-chat').classList.add('hidden');
   document.querySelectorAll('.cst-planet.selected').forEach(n => n.classList.remove('selected'));
+  window.Cst3D?.select(null);
   _cstChatKey = null;
 }
+
+// Exposed so the 3D module's raycaster can open the 1:1 chat on planet click.
+window._cstOpenChat = _cstOpenChat;
 
 async function _cstSendChat() {
   const input = document.getElementById('cst-chat-input');

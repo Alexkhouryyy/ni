@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Apex">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
-<link rel="stylesheet" href="/static/styles.css?v=omni4">
-<link rel="stylesheet" href="/static/mobile.css?v=omni4">
+<link rel="stylesheet" href="/static/styles.css?v=omni5">
+<link rel="stylesheet" href="/static/mobile.css?v=omni5">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -637,6 +637,9 @@
     </form>
 
     <div class="cst-stage">
+      <!-- real 3D solar system (mounts here when WebGL is available) -->
+      <div class="cst-3d" id="cst-3d"></div>
+      <!-- CSS fallback orbit (shown when 3D is unavailable) -->
       <div class="cst-orbit" id="cst-orbit">
         <div class="cst-band inner"></div>
         <div class="cst-band mid"></div>
@@ -704,8 +707,9 @@
   <button class="ib-no" id="install-no">Not now</button>
 </div>
 
-<script src="/static/app.js?v=omni4"></script>
-<script src="/static/voice-mobile.js?v=omni4"></script>
+<script src="/static/app.js?v=omni5"></script>
+<script src="/static/voice-mobile.js?v=omni5"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
+<script type="module" src="/static/cst3d.js?v=omni5"></script>
 </body>
 </html>
