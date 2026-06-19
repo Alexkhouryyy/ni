@@ -1227,6 +1227,26 @@ async def constellation_endpoint(request: Request):
     return {"ok": True, **payload}
 
 
+@app.post("/api/constellation/chat")
+async def constellation_chat(request: Request):
+    """Direct 1:1 conversation with a single expert planet."""
+    body = await request.json()
+    key = (body.get("planet") or "").strip()
+    message = (body.get("message") or "").strip()
+    history = body.get("history") or []
+    if not key or not message:
+        return JSONResponse({"error": "planet and message are required"}, status_code=400)
+
+    from agent import constellation
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None, lambda: constellation.chat_with_planet(key, message, history)
+    )
+    if result.get("error"):
+        return JSONResponse(result, status_code=400)
+    return result
+
+
 # --- Voice: speech-to-text (OpenAI Whisper) ---
 @app.post("/api/transcribe")
 async def transcribe_endpoint(file: UploadFile = File(...)):

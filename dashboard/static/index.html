@@ -44,6 +44,7 @@
     <button data-tab="live" class="nav-btn"><span class="icon">▣</span>Live feed</button>
     <button data-tab="chat" class="nav-btn"><span class="icon">◌</span>Chat</button>
     <button data-tab="council" class="nav-btn"><span class="icon">⚖</span>Council</button>
+    <button data-tab="constellation" class="nav-btn"><span class="icon">✷</span>Constellation</button>
 
     <div class="nav-group-label">Intelligence</div>
     <button data-tab="goals" class="nav-btn"><span class="icon">◇</span>Goals</button>
@@ -613,6 +614,46 @@
     <div id="council-progress" class="council-progress"></div>
     <div id="council-verdict" class="council-verdict"></div>
     <div id="council-transcript" class="council-transcript"></div>
+  </section>
+
+  <!-- CONSTELLATION -->
+  <section id="tab-constellation" class="tab">
+    <header class="page-head">
+      <h1>The Constellation</h1>
+      <div class="page-sub">12 domain-expert planets orbit Apex. Convene them on a decision — or click a planet to talk to it directly.</div>
+    </header>
+    <form id="cst-form" class="add-form vertical">
+      <textarea id="cst-question" placeholder="Ask the constellation a big question — “Should I take the job in a new city?”" rows="2"></textarea>
+      <div class="cst-controls">
+        <span class="cst-hint">✦ Relevant experts auto-light when you convene · click any planet to chat 1:1</span>
+        <button type="submit" id="cst-convene" class="primary-btn">Convene</button>
+      </div>
+    </form>
+
+    <div class="cst-stage">
+      <div class="cst-orbit" id="cst-orbit">
+        <div class="cst-ring"></div>
+        <div class="cst-sun" id="cst-sun" title="Apex — the Sun"><span>APEX</span></div>
+        <!-- planet nodes injected by JS -->
+      </div>
+    </div>
+
+    <div id="cst-progress" class="council-progress"></div>
+    <div id="cst-verdict" class="council-verdict"></div>
+    <div id="cst-takes" class="cst-takes"></div>
+
+    <!-- 1:1 expert chat -->
+    <div id="cst-chat" class="cst-chat hidden">
+      <div class="cst-chat-head">
+        <span id="cst-chat-title">Chat</span>
+        <button id="cst-chat-close" class="cst-chat-close" title="Close">✕</button>
+      </div>
+      <div id="cst-chat-log" class="cst-chat-log"></div>
+      <form id="cst-chat-form" class="cst-chat-form">
+        <input id="cst-chat-input" type="text" placeholder="Message this expert…" autocomplete="off">
+        <button type="submit" class="primary-btn">Send</button>
+      </form>
+    </div>
   </section>
 
 </main>

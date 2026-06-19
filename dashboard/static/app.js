@@ -165,6 +165,11 @@ function connectWS() {
     if (msg.type === 'council_answer')      _councilAnswer(msg);
     if (msg.type === 'council_done')        _councilDone(msg);
     if (msg.type === 'council_error')       _councilError(msg.error);
+    if (msg.type === 'constellation_start')    _cstStart(msg.planets);
+    if (msg.type === 'constellation_progress') _cstProgress(msg.message);
+    if (msg.type === 'constellation_answer')   _cstAnswer(msg);
+    if (msg.type === 'constellation_done')     _cstDone(msg);
+    if (msg.type === 'constellation_error')    _cstError(msg.error);
     // Refresh self-improvement panel when a rollback check completes
     if (msg.type === 'rollback_done' && document.getElementById('tab-reflections')?.classList.contains('active')) {
       loadReflections();
@@ -204,6 +209,7 @@ async function loadTab(tab) {
     camera: loadCamera,
     chat: loadChat,
     council: loadCouncil,
+    constellation: loadConstellation,
   };
   if (fns[tab]) try { await fns[tab](); } catch (e) { console.error('loadTab', tab, e); }
 }
@@ -1776,6 +1782,229 @@ function _councilError(err) {
     d.className = 'council-step council-step-err';
     d.textContent = 'Council failed: ' + err;
     progress.appendChild(d);
+  }
+}
+
+// ============== THE CONSTELLATION ==============
+let cstRunning = false;
+let _cstPlanets = [];
+let _cstChatKey = null;
+let _cstChatHistory = [];
+
+async function loadConstellation() {
+  const form = document.getElementById('cst-form');
+  if (form && !form._wired) {
+    form._wired = true;
+    form.addEventListener('submit', e => { e.preventDefault(); runConstellation(); });
+    document.getElementById('cst-chat-form').addEventListener('submit', e => { e.preventDefault(); _cstSendChat(); });
+    document.getElementById('cst-chat-close').addEventListener('click', _cstCloseChat);
+  }
+  if (!_cstPlanets.length) {
+    try {
+      const data = await api('/api/constellation/roster');
+      _cstPlanets = data.planets || [];
+      _cstRenderOrbit(_cstPlanets);
+    } catch (e) { /* roster fetch failed — try again on next visit */ }
+  }
+}
+
+function _cstRenderOrbit(planets) {
+  const orbit = document.getElementById('cst-orbit');
+  if (!orbit) return;
+  orbit.querySelectorAll('.cst-planet').forEach(n => n.remove());
+  const n = planets.length;
+  planets.forEach((p, i) => {
+    const angle = (i / n) * 2 * Math.PI - Math.PI / 2;  // start at 12 o'clock
+    const R = 42;  // % of half-container
+    const cx = 50 + R * Math.cos(angle);
+    const cy = 50 + R * Math.sin(angle);
+    const node = document.createElement('button');
+    node.type = 'button';
+    node.className = `cst-planet pack-${p.pack}`;
+    node.dataset.key = p.key;
+    node.style.left = cx + '%';
+    node.style.top = cy + '%';
+    node.title = `${p.display} (${p.codename}) — ${p.domain}\nClick to chat`;
+    node.innerHTML =
+      `<span class="cst-glyph">${p.glyph || '✦'}</span>` +
+      `<span class="cst-name">${escapeHTML(p.display)}</span>`;
+    node.addEventListener('click', () => _cstOpenChat(p.key));
+    orbit.appendChild(node);
+  });
+}
+
+function _cstSetAll(state) {
+  document.querySelectorAll('.cst-planet').forEach(node => {
+    node.classList.remove('active', 'dim', 'thinking', 'done');
+    if (state === 'dim') node.classList.add('dim');
+  });
+}
+
+async function runConstellation() {
+  if (cstRunning) return;
+  const q = document.getElementById('cst-question').value.trim();
+  if (!q) return;
+  cstRunning = true;
+  document.getElementById('cst-verdict').innerHTML = '';
+  document.getElementById('cst-takes').innerHTML = '';
+  document.getElementById('cst-progress').innerHTML = '<div class="council-step">Routing to the right experts…</div>';
+  _cstSetAll('idle');
+  const btn = document.getElementById('cst-convene');
+  btn.disabled = true; btn.textContent = 'Convening…';
+  document.getElementById('cst-sun').classList.add('active');
+  try {
+    const result = await api('/api/constellation', { method: 'POST', body: { question: q } });
+    if (cstRunning) _cstDone(result);  // fallback if WS event didn't arrive
+  } catch (e) {
+    _cstError('Request failed: ' + e.message);
+  }
+}
+
+function _cstProgress(msg) {
+  const progress = document.getElementById('cst-progress');
+  if (progress) {
+    const d = document.createElement('div');
+    d.className = 'council-step';
+    d.textContent = msg;
+    progress.appendChild(d);
+  }
+}
+
+function _cstStart(planets) {
+  _cstSetAll('dim');
+  const takes = document.getElementById('cst-takes');
+  if (takes) takes.innerHTML = '';
+  (planets || []).forEach(p => {
+    const node = document.querySelector(`.cst-planet[data-key="${CSS.escape(p.key)}"]`);
+    if (node) { node.classList.remove('dim'); node.classList.add('active', 'thinking'); }
+    if (takes) {
+      const card = document.createElement('div');
+      card.className = `cst-take pack-${p.pack || (_cstPlanets.find(x => x.key === p.key) || {}).pack || ''}`;
+      card.dataset.key = p.key;
+      card.innerHTML =
+        `<div class="cst-take-head"><span class="cst-take-glyph">${p.glyph || '✦'}</span>` +
+        `<span>${escapeHTML(p.display)}</span>` +
+        `<span class="cst-take-code">${escapeHTML(p.codename || '')}</span>` +
+        `<span class="council-pill thinking">thinking…</span></div>` +
+        `<div class="cst-take-body"></div>`;
+      takes.appendChild(card);
+    }
+  });
+}
+
+function _cstAnswer(data) {
+  const node = document.querySelector(`.cst-planet[data-key="${CSS.escape(data.key)}"]`);
+  if (node) { node.classList.remove('thinking'); node.classList.add('done'); }
+  const card = document.querySelector(`.cst-take[data-key="${CSS.escape(data.key)}"]`);
+  if (card) {
+    const pill = card.querySelector('.council-pill');
+    if (pill) pill.remove();
+    card.querySelector('.cst-take-body').innerHTML = renderMarkdown(data.text || '');
+  }
+}
+
+function _cstDone(data) {
+  if (!cstRunning) return;  // already rendered (WS + POST both fired)
+  cstRunning = false;
+  const btn = document.getElementById('cst-convene');
+  if (btn) { btn.disabled = false; btn.textContent = 'Convene'; }
+  document.getElementById('cst-sun').classList.remove('active');
+
+  const verdict = document.getElementById('cst-verdict');
+  if (verdict) {
+    const conf = (data.confidence || '').toLowerCase();
+    const confNote = data.confidence_note ? ` — ${escapeHTML(data.confidence_note)}` : '';
+    const confBadge = conf ? `<span class="council-confidence ${conf}">Confidence: ${conf}${confNote}</span>` : '';
+    const dis = (data.disagreement || '').trim();
+    const disagreed = dis && dis.toLowerCase() !== 'the council agreed';
+    const disBlock = disagreed
+      ? `<div class="council-disagreement"><div class="council-disagreement-head">Where the experts split</div><div class="council-disagreement-body">${renderMarkdown(dis)}</div></div>`
+      : '';
+    verdict.innerHTML =
+      `<div class="council-verdict-head">The Sun’s verdict <span class="council-members">${(data.experts || []).map(escapeHTML).join(' · ')}</span>${confBadge}</div>` +
+      `<div class="council-verdict-body">${renderMarkdown(data.final_answer || '')}</div>` +
+      disBlock;
+  }
+  // Fallback: build take cards from POST result if the WS stream never arrived.
+  const takes = document.getElementById('cst-takes');
+  if (takes && !takes.children.length && (data.takes || []).length) {
+    _cstStart(data.takes);
+    (data.takes || []).forEach(t => _cstAnswer(t));
+  }
+  document.querySelectorAll('.cst-planet.thinking').forEach(n => n.classList.remove('thinking'));
+  document.querySelectorAll('.cst-take .council-pill.thinking').forEach(p => {
+    p.classList.remove('thinking'); p.classList.add('skipped'); p.textContent = 'no response';
+  });
+}
+
+function _cstError(err) {
+  cstRunning = false;
+  const btn = document.getElementById('cst-convene');
+  if (btn) { btn.disabled = false; btn.textContent = 'Convene'; }
+  document.getElementById('cst-sun')?.classList.remove('active');
+  const progress = document.getElementById('cst-progress');
+  if (progress) {
+    const d = document.createElement('div');
+    d.className = 'council-step council-step-err';
+    d.textContent = 'Constellation failed: ' + err;
+    progress.appendChild(d);
+  }
+}
+
+// --- 1:1 expert chat ---
+function _cstOpenChat(key) {
+  const p = _cstPlanets.find(x => x.key === key);
+  if (!p) return;
+  _cstChatKey = key;
+  _cstChatHistory = [];
+  document.getElementById('cst-chat-title').innerHTML =
+    `${p.glyph || '✦'} ${escapeHTML(p.display)}<span class="cst-chat-sub">${escapeHTML(p.codename || '')} · ${escapeHTML(p.domain || '')}</span>`;
+  document.getElementById('cst-chat-log').innerHTML =
+    `<div class="cst-msg planet"><div class="cst-msg-body">I'm the ${escapeHTML(p.display)} expert. Ask me anything in my domain — I remember our past conversations.</div></div>`;
+  document.getElementById('cst-chat').classList.remove('hidden');
+  document.querySelectorAll('.cst-planet').forEach(n => n.classList.toggle('selected', n.dataset.key === key));
+  const input = document.getElementById('cst-chat-input');
+  input.value = '';
+  input.focus();
+  document.getElementById('cst-chat').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function _cstCloseChat() {
+  document.getElementById('cst-chat').classList.add('hidden');
+  document.querySelectorAll('.cst-planet.selected').forEach(n => n.classList.remove('selected'));
+  _cstChatKey = null;
+}
+
+async function _cstSendChat() {
+  const input = document.getElementById('cst-chat-input');
+  const msg = input.value.trim();
+  if (!msg || !_cstChatKey) return;
+  input.value = '';
+  const log = document.getElementById('cst-chat-log');
+  log.insertAdjacentHTML('beforeend', `<div class="cst-msg user"><div class="cst-msg-body">${escapeHTML(msg)}</div></div>`);
+  const thinking = document.createElement('div');
+  thinking.className = 'cst-msg planet';
+  thinking.innerHTML = '<div class="cst-msg-body"><span class="council-pill thinking">thinking…</span></div>';
+  log.appendChild(thinking);
+  log.scrollTop = log.scrollHeight;
+
+  const planetForCall = _cstChatKey;
+  const priorHistory = _cstChatHistory.slice();  // history BEFORE this message
+  _cstChatHistory.push({ role: 'user', content: msg });
+  try {
+    const r = await api('/api/constellation/chat', {
+      method: 'POST',
+      body: { planet: planetForCall, message: msg, history: priorHistory },
+    });
+    thinking.remove();
+    const reply = r.reply || '(no reply)';
+    log.insertAdjacentHTML('beforeend', `<div class="cst-msg planet"><div class="cst-msg-body">${renderMarkdown(reply)}</div></div>`);
+    _cstChatHistory.push({ role: 'assistant', content: reply });
+    log.scrollTop = log.scrollHeight;
+  } catch (e) {
+    thinking.remove();
+    log.insertAdjacentHTML('beforeend', `<div class="cst-msg planet err"><div class="cst-msg-body">Failed: ${escapeHTML(e.message)}</div></div>`);
+    log.scrollTop = log.scrollHeight;
   }
 }
 

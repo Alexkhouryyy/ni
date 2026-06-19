@@ -475,6 +475,62 @@ def convene(question: str, planets: list[Planet] | None = None, client=None,
     )
 
 
+def _planet_brief(p: Planet) -> dict:
+    return {"key": p.key, "display": p.display, "codename": p.codename,
+            "glyph": p.glyph, "pack": p.pack, "domain": p.domain}
+
+
+def chat_with_planet(planet_key: str, message: str,
+                     history: list[dict] | None = None) -> dict:
+    """Hold a direct 1:1 conversation with a single expert planet.
+
+    The planet answers in character, with its own persistent memory loaded into
+    context and the recent conversation history carried turn-to-turn. Like a
+    convene, it distills a durable fact from the exchange off-thread.
+
+    history — [{role: 'user'|'assistant', content: str}, …], oldest first,
+              EXCLUDING the current `message` (which is appended here).
+    Returns {planet: {...}, reply: str} or {error: str}.
+    """
+    planet = PLANETS.get(planet_key)
+    if planet is None:
+        return {"error": f"Unknown expert: {planet_key!r}"}
+
+    system = planet.system
+    mem = _load_planet_memory(planet, message)
+    if mem:
+        system += "\n\n--- YOUR MEMORY ABOUT THIS USER (from past consults) ---\n" + mem
+
+    messages: list[dict] = []
+    for turn in (history or [])[-10:]:
+        role = "assistant" if turn.get("role") == "assistant" else "user"
+        content = (turn.get("content") or "").strip()
+        if content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message})
+
+    try:
+        client = provider.get_client(planet.model)
+        resp = telemetry.create(
+            client, call_site="agent.constellation/chat", model=planet.model,
+            max_tokens=900, system=system, messages=messages,
+        )
+        reply = "".join(
+            getattr(b, "text", "") for b in getattr(resp, "content", [])
+            if getattr(b, "type", "") == "text"
+        ).strip()
+    except Exception as e:
+        return {"planet": _planet_brief(planet), "error": str(e)}
+
+    if getattr(config, "CONSTELLATION_LEARN", True) and reply:
+        threading.Thread(
+            target=lambda: _persist_planet_memory(planet, message, reply),
+            daemon=True, name="ConstellationChatLearn",
+        ).start()
+
+    return {"planet": _planet_brief(planet), "reply": reply}
+
+
 def convene_briefing(question: str, planets: list[Planet], client=None) -> str:
     """Compact synthesized briefing for the auto path — folded into the user turn."""
     result = convene(question, planets=planets)

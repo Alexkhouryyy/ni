@@ -169,6 +169,56 @@ class TestPersistence:
         assert called["n"] == 0
 
 
+# ── 1:1 expert chat ───────────────────────────────────────────────────────────
+
+class TestChat:
+    def test_chat_returns_reply(self, monkeypatch):
+        monkeypatch.setattr(constellation.provider, "get_client", lambda model: object())
+        monkeypatch.setattr(constellation.config, "CONSTELLATION_LEARN", False)
+
+        class _Block:
+            type = "text"
+            text = "Build an emergency fund first. **Bottom line:** stabilize, then invest."
+
+        class _Resp:
+            content = [_Block()]
+
+        monkeypatch.setattr(constellation.telemetry, "create", lambda client, **kw: _Resp())
+
+        out = constellation.chat_with_planet("finance", "should I invest my savings?", history=[])
+        assert out["planet"]["display"] == "Finance"
+        assert "emergency fund" in out["reply"]
+
+    def test_chat_unknown_planet(self):
+        out = constellation.chat_with_planet("not_a_planet", "hi")
+        assert "error" in out
+
+    def test_chat_passes_history(self, monkeypatch):
+        monkeypatch.setattr(constellation.provider, "get_client", lambda model: object())
+        monkeypatch.setattr(constellation.config, "CONSTELLATION_LEARN", False)
+        captured = {}
+
+        class _Block:
+            type = "text"
+            text = "ok"
+
+        class _Resp:
+            content = [_Block()]
+
+        def fake_create(client, **kw):
+            captured["messages"] = kw.get("messages")
+            return _Resp()
+
+        monkeypatch.setattr(constellation.telemetry, "create", fake_create)
+        constellation.chat_with_planet(
+            "career", "what next?",
+            history=[{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
+        )
+        roles = [m["role"] for m in captured["messages"]]
+        assert roles == ["user", "assistant", "user"]  # history + new message
+        assert captured["messages"][-1]["content"] == "what next?"
+
+
 # ── Roster / lifecycle ────────────────────────────────────────────────────────
 
 class TestRoster:
