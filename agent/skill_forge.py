@@ -43,26 +43,33 @@ def init_db() -> None:
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_forged_status ON forged_tools(status, created_at DESC)"
         )
+        # Networked skills (internet/external services) carry needs_network=1 and are
+        # always staged for one-time user approval. Added via migration for old DBs.
+        try:
+            c.execute("ALTER TABLE forged_tools ADD COLUMN needs_network INTEGER DEFAULT 0")
+        except Exception:
+            pass  # column already exists
 
 
 def list_forged(status: Optional[str] = None) -> list[dict]:
+    cols = "id, name, description, status, created_at, COALESCE(needs_network, 0)"
     try:
         with longterm._conn() as c:
             if status:
                 rows = c.execute(
-                    "SELECT id, name, description, status, created_at FROM forged_tools "
+                    f"SELECT {cols} FROM forged_tools "
                     "WHERE status = ? ORDER BY created_at DESC",
                     (status,),
                 ).fetchall()
             else:
                 rows = c.execute(
-                    "SELECT id, name, description, status, created_at FROM forged_tools "
-                    "ORDER BY created_at DESC"
+                    f"SELECT {cols} FROM forged_tools ORDER BY created_at DESC"
                 ).fetchall()
     except Exception:
         return []
     return [
-        {"id": r[0], "name": r[1], "description": r[2], "status": r[3], "created_at": r[4]}
+        {"id": r[0], "name": r[1], "description": r[2], "status": r[3],
+         "created_at": r[4], "needs_network": bool(r[5])}
         for r in rows
     ]
 
@@ -243,3 +250,147 @@ def attempt_forge(client, gap_description: str) -> Optional[dict]:
     proposal["id"] = tool_id
     proposal["sandbox_output"] = output
     return proposal
+
+
+# ── Skill acquisition (used by the Constellation experts) ─────────────────────
+
+_NET_FORGE_PROMPT = """\
+The user's AI expert needs a new skill to fill this capability gap:
+
+CAPABILITY GAP: {gap}
+
+Write a Python skill that fills this gap. Requirements:
+- Function named `run` with signature `def run(inputs: dict) -> str:`
+- Accept a dict of inputs and return a human-readable string result
+- This skill MAY use the network via the standard library (urllib.request, ssl,
+  json, http.client). Do NOT pip-install anything — standard library only.
+- Read any secrets/tokens from os.environ (e.g. os.environ.get("SOME_TOKEN")).
+  Never hard-code credentials.
+- Handle all errors gracefully and return an error string (never raise)
+
+Also provide:
+- tool_name: short snake_case name (e.g. "post_to_webhook", "fetch_weather")
+- description: one clear sentence describing what it does
+- test_case: a minimal inputs dict (it will NOT be executed, only compiled)
+- env_vars: list of environment variable names the skill expects (may be empty)
+
+Output ONLY valid JSON, no markdown fences:
+{{
+  "tool_name": "...",
+  "description": "...",
+  "code": "def run(inputs: dict) -> str:\\n    ...",
+  "test_case": {{}},
+  "env_vars": []
+}}
+"""
+
+
+def _compile_check(code: str) -> tuple[bool, str]:
+    """Compile-only validation (no execution) — used for networked skills that
+    would otherwise cause real side effects when run."""
+    try:
+        ns: dict = {}
+        exec(compile(code, "<forged>", "exec"), ns)
+    except Exception as e:
+        return False, f"compile error: {e}"
+    if "run" not in ns or not callable(ns["run"]):
+        return False, "code must define def run(inputs: dict) -> str"
+    return True, "compiled OK"
+
+
+def _propose(client, gap: str, allow_network: bool) -> Optional[dict]:
+    """Ask the model for a skill proposal and validate it. Returns a dict or None."""
+    prompt = (_NET_FORGE_PROMPT if allow_network else _FORGE_PROMPT).format(gap=gap)
+    try:
+        resp = telemetry.create(
+            client, call_site="agent.skill_forge/acquire",
+            model=config.AGENT_MODEL, max_tokens=1800,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = resp.content[0].text.strip()
+    except Exception as e:
+        print(f"[SkillForge] acquire generation failed: {e}")
+        return None
+
+    start, end = text.find("{"), text.rfind("}") + 1
+    if start == -1 or end <= start:
+        return None
+    try:
+        p = json.loads(text[start:end])
+    except Exception:
+        return None
+
+    name = (p.get("tool_name") or "").strip()
+    description = (p.get("description") or "").strip()
+    code = (p.get("code") or "").strip()
+    if not name or not code or not name.isidentifier():
+        return None
+
+    if allow_network:
+        ok, out = _compile_check(code)
+    else:
+        ok, out = _validate_in_sandbox(code, p.get("test_case", {}))
+    if not ok:
+        print(f"[SkillForge] validation failed for '{name}': {out}")
+        return None
+
+    return {"name": name, "description": description, "code": code,
+            "test_case": p.get("test_case", {}), "output": out,
+            "env_vars": p.get("env_vars", [])}
+
+
+def acquire(client, description: str, *, allow_network: bool = False,
+            trigger: str = "expert") -> str:
+    """Forge a brand-new skill on demand for a capability gap.
+
+    Offline skills are validated and installed immediately (the expert can run
+    them the same turn). Networked skills are staged for one-time user approval,
+    then become available to every expert and the core agent. Returns a status
+    string for the expert to relay to the user.
+    """
+    prop = _propose(client, description, allow_network)
+    if not prop:
+        return ("Couldn't forge a working skill for that — generation or validation "
+                "failed. Try describing the capability more concretely.")
+    name, desc, code = prop["name"], prop["description"], prop["code"]
+
+    if not allow_network:
+        try:
+            from agent import skills as _skills
+            msg = _skills.create_skill(name, desc, code, _trigger=trigger)
+        except Exception as e:
+            return f"Forged '{name}' but installation failed: {e}"
+        if "created and loaded" not in msg and "kept at previous" not in msg:
+            return f"Forged '{name}' but it didn't install cleanly: {msg}"
+        return (f"Installed a new skill '{name}': {desc}. It's live now — run it with "
+                f"run_skill('{name}', {{...}}).")
+
+    # Networked → stage for one-time approval.
+    now = time.time()
+    try:
+        with longterm._conn() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO forged_tools "
+                "(name, description, code, test_case, status, created_at, needs_network) "
+                "VALUES (?, ?, ?, ?, 'pending', ?, 1)",
+                (name, desc, code, json.dumps(prop.get("test_case", {})), now),
+            )
+            tool_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+    except Exception as e:
+        return f"Forged '{name}' but couldn't stage it for approval: {e}"
+
+    env_note = ""
+    if prop.get("env_vars"):
+        env_note = " It will use: " + ", ".join(str(v) for v in prop["env_vars"]) + "."
+    if _NOTIFY_FN:
+        try:
+            _NOTIFY_FN(
+                title="New networked skill needs approval",
+                body=f"'{name}': {desc}",
+                kind="skill_forge", priority="normal", url="/?tab=skills",
+            )
+        except Exception:
+            pass
+    return (f"Forged a networked skill '{name}': {desc}. Because it uses the internet, "
+            f"it's staged for your one-time approval in the Skill Forge tab.{env_note} "
+            f"Approve it there and I can run it from then on.")

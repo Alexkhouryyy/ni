@@ -24,6 +24,7 @@ Invocation:
 """
 from __future__ import annotations
 import concurrent.futures
+import json
 import re
 import threading
 import time
@@ -480,26 +481,187 @@ def _planet_brief(p: Planet) -> dict:
             "glyph": p.glyph, "pack": p.pack, "domain": p.domain}
 
 
+# ── 1:1 chat: experts get HANDS (skills they can run + forge) ─────────────────
+#
+# A convene is cheap advice (one model call per planet). But in a direct 1:1
+# chat the expert becomes a tool-using agent: it can list & run skills, and when
+# it's missing one it can FORGE a new skill (offline skills install instantly;
+# networked ones stage for one-time approval). This is what lets the Designer
+# actually build & deploy a website instead of saying "I can't".
+
+_CHAT_HANDS = (
+    "\n\n--- YOU HAVE HANDS HERE ---\n"
+    "In this 1:1 chat you can ACT, not just advise. You have skills you can run, "
+    "and you can forge new skills when you're missing one.\n"
+    "When the user asks you to DO something (build, deploy, fetch, generate a file, "
+    "call a service):\n"
+    "1) Call list_skills to see what you can run right now.\n"
+    "2) If a skill fits, run it with run_skill.\n"
+    "3) If nothing fits, call acquire_skill with a precise description (set "
+    "needs_network=true if it needs the internet or an external service), then run "
+    "the new skill.\n"
+    "To build & deploy a website: write the COMPLETE HTML/CSS yourself, then call "
+    "run_skill with name='publish_website' and inputs={'site_name': <slug>, "
+    "'files': {'index.html': '<full html>', 'style.css': '<full css>'}}. It returns "
+    "a live URL — give that URL to the user.\n"
+    "Never claim you 'can't' do something before trying list_skills and "
+    "acquire_skill. After acting, tell the user exactly what you did and share any URL."
+)
+
+_CHAT_TOOLS = [
+    {
+        "name": "list_skills",
+        "description": "List the skills (real tools) you can run right now. Call this "
+                       "first whenever the user asks you to DO something concrete.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "run_skill",
+        "description": "Run one of your skills by exact name with an inputs object. "
+                       "Returns the skill's result (e.g. a live website URL).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Skill name from list_skills."},
+                "inputs": {"type": "object", "description": "Inputs for the skill."},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "acquire_skill",
+        "description": "Forge a brand-new skill when you lack one for the task. "
+                       "Describe the capability precisely. Offline skills install "
+                       "instantly; set needs_network=true for anything using the "
+                       "internet/an external API (those need one-time user approval).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string", "description": "What the new skill must do."},
+                "needs_network": {"type": "boolean", "description": "True if it needs the internet."},
+            },
+            "required": ["description"],
+        },
+    },
+]
+
+
+def _chat_tools_on() -> bool:
+    return bool(getattr(config, "CONSTELLATION_CHAT_TOOLS", True))
+
+
+def _text_of(resp) -> str:
+    return "".join(
+        getattr(b, "text", "") for b in getattr(resp, "content", [])
+        if getattr(b, "type", "") == "text"
+    ).strip()
+
+
+def _block_to_dict(b) -> dict:
+    t = getattr(b, "type", "")
+    if t == "text":
+        return {"type": "text", "text": getattr(b, "text", "")}
+    if t == "tool_use":
+        return {"type": "tool_use", "id": b.id, "name": b.name, "input": b.input or {}}
+    return {"type": "text", "text": ""}
+
+
+def _dispatch_expert_tool(client, planet: Planet, name: str, inputs: dict) -> str:
+    """Run one tool the expert called. Never raises — returns a string for the model."""
+    from agent import skills as _skills, self_mod as _selfmod, skill_forge as _forge
+    try:
+        if name == "list_skills":
+            sk = _skills.list_skills()
+            forged = [{"name": t["name"], "description": t["description"]}
+                      for t in _selfmod.get_dynamic_tools()]
+            return json.dumps({"skills": sk, "forged": forged}, indent=2)
+
+        if name == "run_skill":
+            sn = (inputs.get("name") or "").strip()
+            si = inputs.get("inputs") or {}
+            if not sn:
+                return "run_skill needs a 'name'."
+            out = _skills.run_skill(sn, si)
+            if out.startswith("[Skills] No skill named"):
+                dyn = _selfmod.dispatch(sn, si)   # fall back to forged/dynamic tools
+                if dyn is not None:
+                    return dyn
+            return out
+
+        if name == "acquire_skill":
+            desc = (inputs.get("description") or "").strip()
+            if not desc:
+                return "acquire_skill needs a 'description'."
+            return _forge.acquire(
+                client, desc, allow_network=bool(inputs.get("needs_network")),
+                trigger=f"expert:{planet.key}",
+            )
+
+        return f"Unknown tool {name!r}."
+    except Exception as e:
+        return f"Tool {name!r} error: {e}"
+
+
+def _chat_agentic(client, planet: Planet, system: str, messages: list[dict]) -> tuple[str, list[dict]]:
+    """Tool-using loop for 1:1 expert chat. Returns (reply, actions)."""
+    steps = max(1, int(getattr(config, "EXPERT_SKILL_MAX_STEPS", 6)))
+    convo = list(messages)
+    actions: list[dict] = []
+
+    for _ in range(steps):
+        resp = telemetry.create(
+            client, call_site="agent.constellation/chat", model=planet.model,
+            max_tokens=1400, system=system, messages=convo, tools=_CHAT_TOOLS,
+        )
+        blocks = list(getattr(resp, "content", []) or [])
+        tool_uses = [b for b in blocks if getattr(b, "type", "") == "tool_use"]
+        if getattr(resp, "stop_reason", "") != "tool_use" and not tool_uses:
+            return _text_of(resp), actions
+
+        convo.append({"role": "assistant", "content": [_block_to_dict(b) for b in blocks]})
+        results = []
+        for tu in tool_uses:
+            out = _dispatch_expert_tool(client, planet, tu.name, tu.input or {})
+            actions.append({"tool": tu.name, "input": tu.input or {}, "result": out[:600]})
+            results.append({"type": "tool_result", "tool_use_id": tu.id,
+                            "content": out[:6000]})
+        convo.append({"role": "user", "content": results})
+
+    # Out of steps — ask for a final wrap-up with no further tools.
+    resp = telemetry.create(
+        client, call_site="agent.constellation/chat", model=planet.model,
+        max_tokens=900, system=system, messages=convo,
+    )
+    return (_text_of(resp) or "[Reached the action-step limit — ask me to continue.]"), actions
+
+
 def chat_with_planet(planet_key: str, message: str,
                      history: list[dict] | None = None) -> dict:
     """Hold a direct 1:1 conversation with a single expert planet.
 
-    The planet answers in character, with its own persistent memory loaded into
-    context and the recent conversation history carried turn-to-turn. Like a
-    convene, it distills a durable fact from the exchange off-thread.
+    In a 1:1 chat the planet is a tool-using agent: it can run skills and forge
+    new ones to actually act for the user (build/deploy/fetch/...), not just
+    advise. It answers in character, with its own persistent memory loaded, and
+    distills a durable fact from the exchange off-thread.
 
     history — [{role: 'user'|'assistant', content: str}, …], oldest first,
               EXCLUDING the current `message` (which is appended here).
-    Returns {planet: {...}, reply: str} or {error: str}.
+    Returns {planet: {...}, reply: str, actions: [...]} or {error: str}.
     """
     planet = PLANETS.get(planet_key)
     if planet is None:
         return {"error": f"Unknown expert: {planet_key!r}"}
 
-    system = planet.system
+    # Override the "you don't have those tools live here" advisory clause for chat.
+    system = planet.system.replace(
+        "you don't have those tools live here, so reason from expertise.",
+        "and here you can actually use and forge tools to do the work, not just advise.",
+    )
     mem = _load_planet_memory(planet, message)
     if mem:
         system += "\n\n--- YOUR MEMORY ABOUT THIS USER (from past consults) ---\n" + mem
+    if _chat_tools_on():
+        system += _CHAT_HANDS
 
     messages: list[dict] = []
     for turn in (history or [])[-10:]:
@@ -509,16 +671,17 @@ def chat_with_planet(planet_key: str, message: str,
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": message})
 
+    actions: list[dict] = []
     try:
         client = provider.get_client(planet.model)
-        resp = telemetry.create(
-            client, call_site="agent.constellation/chat", model=planet.model,
-            max_tokens=900, system=system, messages=messages,
-        )
-        reply = "".join(
-            getattr(b, "text", "") for b in getattr(resp, "content", [])
-            if getattr(b, "type", "") == "text"
-        ).strip()
+        if _chat_tools_on():
+            reply, actions = _chat_agentic(client, planet, system, messages)
+        else:
+            resp = telemetry.create(
+                client, call_site="agent.constellation/chat", model=planet.model,
+                max_tokens=900, system=system, messages=messages,
+            )
+            reply = _text_of(resp)
     except Exception as e:
         return {"planet": _planet_brief(planet), "error": str(e)}
 
@@ -528,7 +691,7 @@ def chat_with_planet(planet_key: str, message: str,
             daemon=True, name="ConstellationChatLearn",
         ).start()
 
-    return {"planet": _planet_brief(planet), "reply": reply}
+    return {"planet": _planet_brief(planet), "reply": reply, "actions": actions}
 
 
 def convene_briefing(question: str, planets: list[Planet], client=None) -> str:
