@@ -39,7 +39,7 @@ const BAND = {
   maker: { r: 6.9, incX: -0.12, incZ:  0.14, color: 0x3ddc97, spd: 0.085 },
 };
 
-const S = { built: false, raf: 0 };
+const S = { built: false, raf: 0, tries: 0 };
 let scene, camera, renderer, labelRenderer, controls, clock, raycaster, pointer;
 let sunMesh, mount;
 const planets = [];                 // { key, mesh, pack, color, base, angle, spd, st, cur:{}, tgt:{} }
@@ -100,8 +100,16 @@ function build(roster) {
   if (S.built) return true;
   mount = document.getElementById('cst-3d');
   if (!mount) return false;
-  const w = mount.clientWidth, h = mount.clientHeight || w;
-  if (w < 60) { setTimeout(() => build(roster), 150); return false; }  // tab not laid out yet
+  // The mount is display:none until `.has-3d` flips on (added on success below),
+  // so it reports zero width. Measure the visible parent stage instead, otherwise
+  // we deadlock: hidden mount -> width 0 -> bail -> never add has-3d -> stays hidden.
+  const stage = mount.parentElement;
+  const w = mount.clientWidth || (stage && stage.clientWidth) || 0;
+  const h = mount.clientHeight || w;
+  if (w < 60) {                       // Constellation tab not laid out yet
+    if (S.tries++ < 60) setTimeout(() => build(roster), 200);
+    return false;
+  }
 
   try {
     scene = new THREE.Scene();
@@ -206,6 +214,7 @@ function build(roster) {
     S.built = true;
     document.querySelector('.cst-stage')?.classList.add('has-3d');
     _animate();
+    console.log('[Cst3D] solar system live');
     return true;
   } catch (e) { return _fail(e.message); }
 }
