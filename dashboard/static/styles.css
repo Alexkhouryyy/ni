@@ -1430,6 +1430,159 @@ pre.md-pre code { background: none; border: none; padding: 0; }
   font-family: 'SF Mono', Menlo, monospace;
   font-size: 12px;
 }
+/* ===== VISION PANEL (redesign) ===== */
+.vp-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  gap: 20px;
+  align-items: start;
+  width: 100%;
+  max-width: 1400px;
+}
+.vp-rail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.vp-stage { display: flex; flex-direction: column; align-items: center; gap: 16px; min-width: 0; }
+
+.vp-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100%;
+}
+.vp-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); min-height: 38px;
+}
+.vp-card-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.vp-card-count { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.vp-card-meta  { font-size: 11px; color: var(--text-mute); font-variant-numeric: tabular-nums; }
+
+/* Avatar stage */
+.vp-avatar-stage {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 420px;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 40%, rgba(95,216,255,0.07), transparent 70%),
+    radial-gradient(ellipse 50% 50% at 50% 60%, rgba(138,124,255,0.07), transparent 65%),
+    var(--bg);
+  border-radius: 16px; overflow: hidden;
+}
+.vp-avatar-aura {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 55% 50% at 50% 42%, rgba(95,216,255,0.13), transparent 65%);
+  animation: vp-aura-breathe 4s ease-in-out infinite;
+  will-change: opacity;
+}
+@keyframes vp-aura-breathe { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+.vp-apex-pill-wrap {
+  position: absolute; top: 14px; left: 50%;
+  transform: translateX(-50%); z-index: 10;
+}
+/* Make the portrait/3D avatar bigger when inside vp-stage */
+#apex-portrait.vp-portrait   { width: 380px !important; height: 460px !important; }
+#apex-avatar-3d.vp-avatar-3d { width: 380px !important; height: 380px !important; }
+#apex-avatar { width: 400px; height: 400px; }
+
+/* Sparkline */
+.vp-sparkline-card canvas {
+  display: block; padding: 8px 14px 12px;
+  width: 100% !important; height: 72px !important;
+}
+
+/* Intel KPI 2×2 */
+.vp-intel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.vp-intel-card {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; position: relative; overflow: hidden;
+}
+.vp-intel-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); opacity: 0.5;
+}
+.vp-intel-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-dim); margin-bottom: 4px; }
+.vp-intel-value { font-size: 20px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+
+/* Goals */
+.vp-goals-list { display: flex; flex-direction: column; }
+.vp-goal-item {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.vp-goal-item:last-child { border-bottom: none; }
+.vp-goal-item:hover { background: var(--bg-3); }
+.vp-goal-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.vp-goal-deadline { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.vp-goal-title {
+  font-size: 12.5px; color: var(--text); line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.vp-goal-bar { margin-top: 5px; height: 3px; background: var(--bg-4, #1a2535); border-radius: 2px; overflow: hidden; }
+.vp-goal-bar-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent), var(--success));
+  border-radius: 2px; transition: width 0.5s ease;
+}
+
+/* Memories */
+.vp-memories-list { display: flex; flex-direction: column; }
+.vp-memory-item {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: start;
+  gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 11.5px;
+}
+.vp-memory-item:last-child { border-bottom: none; }
+.vp-memory-text { color: var(--text-mute); line-height: 1.4; }
+.vp-memory-imp  { color: var(--warn); font-size: 9px; letter-spacing: 1px; white-space: nowrap; }
+
+/* Camera widget */
+.vp-webcam-frame { min-height: 140px; }
+
+/* Insights */
+.vp-insights-list { display: flex; flex-direction: column; }
+.vp-insight-item { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.vp-insight-item:last-child { border-bottom: none; }
+.vp-insight-text { font-size: 12px; color: var(--text-mute); margin-top: 5px; line-height: 1.4; }
+.vp-conf-bar {
+  margin-top: 5px; height: 2px; background: var(--bg-4, #1a2535);
+  border-radius: 1px; overflow: hidden;
+}
+.vp-conf-bar-fill {
+  height: 100%; background: var(--accent-2);
+  border-radius: 1px; transition: width 0.5s ease;
+}
+
+/* Skills */
+.vp-skills-inner { display: flex; align-items: center; gap: 14px; padding: 12px 14px; }
+.vp-skills-legend { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+.vp-skill-row { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.vp-skill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.vp-skill-name { flex: 1; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-skill-rate { color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 10px; }
+
+/* Empty states */
+.vp-empty { padding: 16px 14px; color: var(--text-dim); font-size: 12px; text-align: center; }
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .vp-grid { grid-template-columns: 1fr 1fr; }
+  .vp-stage { grid-column: 1 / -1; order: -1; }
+  .vp-avatar-stage { min-height: 360px; }
+  #apex-portrait.vp-portrait   { width: 320px !important; height: 390px !important; }
+  #apex-avatar-3d.vp-avatar-3d { width: 320px !important; height: 320px !important; }
+  #apex-avatar { width: 320px; height: 320px; }
+}
+@media (max-width: 720px) {
+  .vp-grid { grid-template-columns: 1fr; }
+  .vp-stage { order: -1; }
+  .vp-avatar-stage { min-height: 300px; }
+  #apex-portrait.vp-portrait   { width: 260px !important; height: 320px !important; }
+  #apex-avatar-3d.vp-avatar-3d { width: 260px !important; height: 260px !important; }
+  #apex-avatar { width: 260px; height: 260px; }
+  .vp-intel-grid { grid-template-columns: 1fr 1fr; }
+  .vp-skills-inner { flex-direction: column; align-items: flex-start; }
+}
+
 /* === Guardian Angel === */
 .guardian-desc {
   font-size: 12px;

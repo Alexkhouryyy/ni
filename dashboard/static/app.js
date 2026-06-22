@@ -105,6 +105,8 @@ function fmtNum(n) { return new Intl.NumberFormat().format(n || 0); }
 // === Tab switching ===
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    const prevTab = document.querySelector('.tab.active')?.id?.replace('tab-', '');
+    if (prevTab === 'camera') _teardownVision();
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
@@ -206,7 +208,7 @@ async function loadTab(tab) {
     knowledge: loadKB,
     selfmod: loadSelfMod,
     phone: loadPhone,
-    camera: loadCamera,
+    camera: loadVision,
     chat: loadChat,
     council: loadCouncil,
     constellation: loadConstellation,
@@ -2405,34 +2407,194 @@ function _start2DFallback() {
   _startApexAvatar();
 }
 
-async function loadCamera() {
+// ── Vision panel state ──
+let _visionRefreshInterval = null;
+let _visionCostChart = null;
+let _visionSkillsChart = null;
+let _visionInited = false;
+
+async function loadVision() {
+  if (!_visionInited) {
+    _visionInited = true;
+    _wireVisionCamera();
+    _ensureApexFace();
+  }
+  await _refreshVisionData();
+  if (!_visionRefreshInterval)
+    _visionRefreshInterval = setInterval(_refreshVisionData, 30_000);
+}
+
+function _teardownVision() {
+  if (_visionRefreshInterval) { clearInterval(_visionRefreshInterval); _visionRefreshInterval = null; }
+  _stopCameraFeed();
+}
+
+async function _wireVisionCamera() {
   let data;
-  try {
-    data = await api('/api/camera/status');
-  } catch (e) { return; }
-
+  try { data = await api('/api/camera/status'); } catch (e) { return; }
   const toggle = document.getElementById('camera-toggle');
-  const hint = document.getElementById('camera-install-hint');
-
+  const hint   = document.getElementById('camera-install-hint');
   if (hint) hint.style.display = data.cv2_available ? 'none' : 'block';
-
   if (toggle && !toggle._wired) {
     toggle._wired = true;
     toggle.addEventListener('change', async () => {
       try {
         const r = await api('/api/camera/toggle', { method: 'POST', body: { enabled: toggle.checked } });
         _updateCameraStatus(r.enabled);
-        if (r.enabled) _startCameraFeed();
-        else _stopCameraFeed();
+        if (r.enabled) _startCameraFeed(); else _stopCameraFeed();
       } catch (e) { toggle.checked = !toggle.checked; }
     });
   }
-
   if (toggle) toggle.checked = data.enabled;
   _updateCameraStatus(data.enabled);
   if (data.enabled) _startCameraFeed();
+}
 
-  _ensureApexFace();
+async function _refreshVisionData() {
+  const settled = await Promise.allSettled([
+    api('/api/goals?active_only=true'),
+    api('/api/memories?limit=8'),
+    api('/api/telemetry?days=7'),
+    api('/api/reflections?status=pending&limit=3'),
+    api('/api/outcomes/skills?days=7'),
+    api('/api/feedback/summary?days=7'),
+  ]);
+  const [goals, mems, tel, refl, skillOutcomes, fbSummary] = settled.map(p => p.status === 'fulfilled' ? p.value : null);
+  _renderVpGoals(goals);
+  _renderVpMemories(mems);
+  _renderVpTelemetry(tel, fbSummary);
+  _renderVpInsights(refl);
+  _renderVpSkills(skillOutcomes);
+}
+
+function _setVpEl(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function _renderVpGoals(goals) {
+  const countEl = document.getElementById('vp-goals-count');
+  const listEl  = document.getElementById('vp-goals-list');
+  if (!listEl) return;
+  const items = Array.isArray(goals) ? goals : (goals?.goals || []);
+  if (countEl) countEl.textContent = items.length || '0';
+  listEl.innerHTML = items.slice(0, 5).map(g => {
+    const score = g.recent_progress?.[0]?.score;
+    const bar = score != null
+      ? `<div class="vp-goal-bar"><div class="vp-goal-bar-fill" style="width:${score * 10}%"></div></div>`
+      : '';
+    const dl = g.deadline
+      ? `<span class="vp-goal-deadline">${new Date(g.deadline * 1000).toLocaleDateString([], {month:'short', day:'numeric'})}</span>`
+      : '';
+    return `<div class="vp-goal-item">
+      <div class="vp-goal-top"><span class="badge">${escapeHTML(g.horizon || '')}</span>${dl}</div>
+      <div class="vp-goal-title">${escapeHTML(g.title || '')}</div>${bar}
+    </div>`;
+  }).join('') || '<div class="vp-empty">No active goals — add one in the Goals tab.</div>';
+}
+
+function _renderVpMemories(mems) {
+  const listEl = document.getElementById('vp-memories-list');
+  if (!listEl) return;
+  const items = Array.isArray(mems) ? mems : (mems?.memories || []);
+  _setVpEl('vp-intel-memories', String(items.length || '—'));
+  listEl.innerHTML = items.slice(0, 5).map(m => {
+    const stars = '★'.repeat(Math.min(Math.round(m.importance || 0), 5));
+    const text  = (m.content || '').slice(0, 80) + ((m.content || '').length > 80 ? '…' : '');
+    return `<div class="vp-memory-item">
+      <span class="badge">${escapeHTML(m.kind || 'note')}</span>
+      <span class="vp-memory-text">${escapeHTML(text)}</span>
+      <span class="vp-memory-imp">${stars}</span>
+    </div>`;
+  }).join('') || '<div class="vp-empty">No memories yet.</div>';
+}
+
+function _renderVpTelemetry(tel, fbSummary) {
+  if (!tel) return;
+  const cache = ((tel.cache_hit_rate || 0) * 100).toFixed(1) + '%';
+  _setVpEl('vp-intel-cache', cache);
+  _setVpEl('vp-intel-calls', fmtNum(tel.total_calls));
+  _setVpEl('vp-spend-total', fmtCost(tel.total_cost_usd));
+
+  const rate = fbSummary?.approval_rate;
+  _setVpEl('vp-intel-approval', rate != null ? Math.round(rate * 100) + '%' : '—');
+  const bar = document.getElementById('vp-intel-approval-bar');
+  if (bar && rate != null) bar.style.width = (rate * 100) + '%';
+
+  const ctx = document.getElementById('vp-cost-chart')?.getContext('2d');
+  if (!ctx) return;
+  const days = Array.isArray(tel.by_day) ? tel.by_day : [];
+  if (_visionCostChart) { _visionCostChart.destroy(); _visionCostChart = null; }
+  _visionCostChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: days.map(d => new Date(d.day * 1000).toLocaleDateString([], {weekday:'short'})),
+      datasets: [{
+        data: days.map(d => d.cost_usd || 0),
+        backgroundColor: 'rgba(95,216,255,0.35)',
+        borderColor: 'rgba(95,216,255,0.7)',
+        borderWidth: 1, borderRadius: 3,
+        hoverBackgroundColor: 'rgba(95,216,255,0.6)',
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => '$' + (c.raw || 0).toFixed(4) } } },
+      scales: {
+        x: { ticks: { color: '#5e6878', font: { size: 10 } }, grid: { display: false } },
+        y: { display: false, beginAtZero: true },
+      },
+    },
+  });
+}
+
+function _renderVpInsights(refl) {
+  const listEl  = document.getElementById('vp-insights-list');
+  const countEl = document.getElementById('vp-pending-count');
+  if (!listEl) return;
+  const items = Array.isArray(refl) ? refl : (refl?.reflections || []);
+  if (countEl) countEl.textContent = items.length ? items.length + ' pending' : '';
+  listEl.innerHTML = items.slice(0, 3).map(r => {
+    const text = (r.content || '').slice(0, 90) + ((r.content || '').length > 90 ? '…' : '');
+    const conf = Math.round((r.confidence || 0) * 100);
+    return `<div class="vp-insight-item">
+      <span class="badge">${escapeHTML(r.kind || 'insight')}</span>
+      <div class="vp-insight-text">${escapeHTML(text)}</div>
+      <div class="vp-conf-bar"><div class="vp-conf-bar-fill" style="width:${conf}%"></div></div>
+    </div>`;
+  }).join('') || '<div class="vp-empty">No pending insights.</div>';
+}
+
+function _renderVpSkills(skillOutcomes) {
+  const ctx   = document.getElementById('vp-skills-chart')?.getContext('2d');
+  const legEl = document.getElementById('vp-skills-legend');
+  if (!ctx) return;
+  const items = Array.isArray(skillOutcomes) ? skillOutcomes : (skillOutcomes?.skills || []);
+  const top = items.slice(0, 5);
+  if (!top.length) { if (legEl) legEl.innerHTML = '<div class="vp-empty">No skill data yet.</div>'; return; }
+  const COLORS = ['#5fd8ff', '#8a7cff', '#3ddc97', '#ffb547', '#ff6a6a'];
+  if (_visionSkillsChart) { _visionSkillsChart.destroy(); _visionSkillsChart = null; }
+  _visionSkillsChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: top.map(s => s.name),
+      datasets: [{ data: top.map(s => s.total_runs || 1), backgroundColor: COLORS, borderWidth: 0, hoverOffset: 4 }],
+    },
+    options: {
+      responsive: false, cutout: '68%',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.label}: ${c.raw} runs` } } },
+    },
+  });
+  if (legEl) {
+    legEl.innerHTML = top.map((s, i) => {
+      const rate = s.approval_rate != null ? Math.round(s.approval_rate * 100) + '%' : '—';
+      return `<div class="vp-skill-row">
+        <span class="vp-skill-dot" style="background:${COLORS[i]}"></span>
+        <span class="vp-skill-name">${escapeHTML(s.name)}</span>
+        <span class="vp-skill-rate">${rate}</span>
+      </div>`;
+    }).join('');
+  }
 }
 
 function _updateCameraStatus(enabled) {
