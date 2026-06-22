@@ -1,0 +1,301 @@
+/* JARVIS Mobile — styles */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --blue: #4fc3f7;
+  --blue-dim: #0d47a1;
+  --bg: #000;
+  --surface: #0a0a0f;
+  --text: #e0f4ff;
+  --text-dim: #546e7a;
+  --danger: #ef5350;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+#app { height: 100%; }
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: env(safe-area-inset-top, 16px) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 16px) env(safe-area-inset-left, 0);
+}
+
+/* ---- Setup screen ---- */
+#setup-screen {
+  justify-content: center;
+  align-items: center;
+  padding: 32px 24px;
+}
+
+.setup-inner {
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+
+.setup-logo {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--blue);
+  margin-bottom: 8px;
+}
+
+.setup-sub {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 48px;
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.setup-form label {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.setup-form input {
+  background: var(--surface);
+  border: 1px solid #1a2a3a;
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 1.1rem;
+  padding: 14px 16px;
+  width: 100%;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.setup-form input:focus { border-color: var(--blue); }
+
+.setup-hint {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.setup-hint span { color: var(--blue); font-family: monospace; }
+
+.btn-primary {
+  background: var(--blue);
+  color: #000;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 16px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: opacity 0.15s;
+}
+
+.btn-primary:active { opacity: 0.7; }
+
+/* ---- Main screen ---- */
+#main-screen { justify-content: space-between; }
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 0;
+}
+
+.header-title {
+  font-size: 0.85rem;
+  letter-spacing: 0.3em;
+  color: var(--text-dim);
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 8px;
+}
+
+/* ---- Orb ---- */
+#orb-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#orb {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.orb-core {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #80d8ff, #0288d1 60%, #01579b);
+  box-shadow: 0 0 30px #4fc3f780, 0 0 60px #4fc3f730;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.orb-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(79, 195, 247, 0.3);
+  animation: pulse-ring 3s ease-in-out infinite;
+}
+
+.ring-1 { width: 110px; height: 110px; animation-delay: 0s; }
+.ring-2 { width: 145px; height: 145px; animation-delay: 0.6s; }
+.ring-3 { width: 180px; height: 180px; animation-delay: 1.2s; }
+
+@keyframes pulse-ring {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.15; transform: scale(1.04); }
+}
+
+/* State: listening */
+#orb.listening .orb-core {
+  box-shadow: 0 0 40px #4fc3f7b0, 0 0 80px #4fc3f750;
+  animation: core-pulse 0.8s ease-in-out infinite;
+}
+
+#orb.listening .orb-ring { animation-duration: 1s; }
+
+@keyframes core-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+/* State: thinking */
+#orb.thinking .orb-ring {
+  animation: spin-ring 2s linear infinite;
+}
+#orb.thinking .ring-2 { animation-direction: reverse; }
+
+@keyframes spin-ring {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* State: speaking */
+#orb.speaking .orb-core {
+  box-shadow: 0 0 50px #4fc3f7d0, 0 0 100px #4fc3f770;
+  animation: speak-pulse 0.4s ease-in-out infinite;
+}
+
+@keyframes speak-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+/* ---- Status ---- */
+.status-text {
+  text-align: center;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  color: var(--blue);
+  min-height: 20px;
+  padding: 0 20px 4px;
+}
+
+/* ---- Transcript ---- */
+.transcript {
+  text-align: center;
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  min-height: 48px;
+  max-height: 80px;
+  padding: 0 28px;
+  overflow: hidden;
+  line-height: 1.5;
+  transition: color 0.3s;
+}
+
+.transcript.jarvis { color: var(--text); }
+
+/* ---- Controls ---- */
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 28px;
+}
+
+.mic-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid #1a2a3a;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.mic-btn svg { width: 30px; height: 30px; }
+
+.mic-btn:active { transform: scale(0.93); }
+
+.mic-btn.active {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: rgba(79, 195, 247, 0.1);
+  box-shadow: 0 0 20px rgba(79, 195, 247, 0.3);
+}
+
+.mic-btn.muted {
+  border-color: var(--danger);
+  color: var(--danger);
+  opacity: 0.6;
+}
+
+.mic-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+/* ---- Connection dot ---- */
+.conn-dot {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transition: background 0.3s;
+}
+
+.conn-off { background: #37474f; }
+.conn-on  { background: #4fc3f7; box-shadow: 0 0 6px #4fc3f7; }
+.conn-err { background: var(--danger); }

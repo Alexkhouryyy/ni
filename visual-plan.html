@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS — Study Mode Feature Plan</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:           #0a0a0f;
+    --card-bg:      #12121a;
+    --border:       rgba(99, 102, 241, 0.15);
+    --accent:       #6366f1;
+    --accent-light: #818cf8;
+    --text:         #e2e8f0;
+    --muted:        #64748b;
+    --glow:         0 0 20px rgba(99, 102, 241, 0.3);
+    --c-learning:   #6366f1;
+    --c-backend:    #ef4444;
+    --c-uiux:       #f59e0b;
+    --c-integr:     #3b82f6;
+    --c-ideas:      #10b981;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    overflow-x: hidden;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+
+  /* ── Header ───────────────────────────────── */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10, 10, 15, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  header h1 {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--accent-light);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .tab-bar {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .tab-btn {
+    padding: 8px 22px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.83rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .tab-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent-light);
+    box-shadow: var(--glow);
+  }
+  .tab-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: var(--glow);
+  }
+
+  /* ── Views ────────────────────────────────── */
+  .view { display: none; min-height: calc(100vh - 130px); padding: 32px 24px; }
+  .view.active { display: block; animation: fadeIn 0.3s ease forwards; }
+  #view-mindmap.active  { display: flex; flex-direction: column; align-items: center; }
+  #view-matrix.active   { display: flex; flex-direction: column; align-items: center; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ══════════════════════════════════════════
+     MIND MAP
+  ══════════════════════════════════════════ */
+  #mindmap-svg {
+    width: 100%;
+    max-width: 980px;
+    height: 680px;
+    overflow: visible;
+  }
+  .mm-node { cursor: pointer; }
+  .mm-node circle { transition: r 0.18s, filter 0.18s; }
+  .mm-node:hover circle { filter: brightness(1.3) drop-shadow(0 0 6px currentColor); }
+  .mm-node text { pointer-events: none; user-select: none; }
+  .mm-path {
+    fill: none;
+    stroke-width: 2;
+    opacity: 0.5;
+    transition: opacity 0.25s, stroke-width 0.25s;
+  }
+  .mm-path.highlighted { opacity: 1; stroke-width: 3; }
+  .mm-path.dimmed { opacity: 0.08; }
+  .mm-node.dimmed circle { opacity: 0.15; }
+  .mm-node.dimmed text  { opacity: 0.15; }
+
+  .mm-legend {
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 12px;
+  }
+  .mm-legend-item {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.78rem; color: var(--muted);
+  }
+  .mm-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* click hint */
+  .mm-hint {
+    font-size: 0.73rem;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ══════════════════════════════════════════
+     KANBAN
+  ══════════════════════════════════════════ */
+  .kanban-board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+  @media (max-width: 860px) { .kanban-board { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .kanban-board { grid-template-columns: 1fr; } }
+
+  .kanban-col {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    min-height: 440px;
+    transition: box-shadow 0.2s;
+  }
+  .kanban-col.drag-over {
+    box-shadow: 0 0 0 2px var(--accent), var(--glow);
+  }
+  .kanban-col-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 14px;
+  }
+  .kanban-col-title {
+    font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .kanban-col-count {
+    margin-left: auto;
+    background: rgba(99,102,241,0.15);
+    color: var(--accent-light);
+    border-radius: 12px;
+    padding: 1px 8px;
+    font-size: 0.7rem; font-weight: 700;
+  }
+  .col-now   { border-top: 2px solid #22c55e; }
+  .col-now   .kanban-col-title { color: #22c55e; }
+  .col-next  { border-top: 2px solid var(--accent); }
+  .col-next  .kanban-col-title { color: var(--accent-light); }
+  .col-later { border-top: 2px solid var(--c-uiux); }
+  .col-later .kanban-col-title { color: var(--c-uiux); }
+  .col-ideas { border-top: 2px solid var(--c-ideas); }
+  .col-ideas .kanban-col-title { color: var(--c-ideas); }
+
+  .kanban-card {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    cursor: grab;
+    font-size: 0.81rem;
+    color: var(--text);
+    line-height: 1.45;
+    transition: all 0.18s;
+    user-select: none;
+  }
+  .kanban-card:hover {
+    border-color: rgba(99,102,241,0.45);
+    background: rgba(99,102,241,0.07);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  }
+  .kanban-card.dragging { opacity: 0.35; cursor: grabbing; }
+
+  .card-tag {
+    display: inline-block;
+    font-size: 0.66rem; font-weight: 700;
+    padding: 1px 7px; border-radius: 4px;
+    margin-bottom: 5px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .tag-backend  { background: rgba(239,68,68,0.14);  color: var(--c-backend); }
+  .tag-ui       { background: rgba(245,158,11,0.14); color: var(--c-uiux); }
+  .tag-learning { background: rgba(99,102,241,0.14); color: var(--c-learning); }
+  .tag-integr   { background: rgba(59,130,246,0.14); color: var(--c-integr); }
+  .tag-ideas    { background: rgba(16,185,129,0.14); color: var(--c-ideas); }
+
+  /* ══════════════════════════════════════════
+     PRIORITY MATRIX
+  ══════════════════════════════════════════ */
+  .matrix-outer {
+    width: 100%;
+    max-width: 660px;
+    margin-top: 10px;
+    padding-bottom: 50px;
+  }
+
+  .matrix-title {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    margin-bottom: 18px;
+    text-transform: uppercase;
+  }
+
+  .matrix-y-axis-wrap {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  .matrix-y-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-align: center;
+    width: 22px;
+    padding: 4px 0;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .matrix-grid-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .matrix-row {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .matrix-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    width: 100%;
+    aspect-ratio: 1;
+    position: relative;
+  }
+
+  .matrix-quadrant {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    position: relative;
+    min-height: 140px;
+  }
+
+  .quad-label {
+    position: absolute;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.3;
+    padding: 8px 10px;
+  }
+
+  /* quadrant colours + label placement */
+  .q-quickwin { border-top: 2px solid #22c55e; }
+  .q-quickwin .quad-label { color: #22c55e; bottom: 8px; left: 8px; }
+  .q-bigbet   { border-top: 2px solid var(--c-uiux); }
+  .q-bigbet   .quad-label { color: var(--c-uiux); bottom: 8px; right: 8px; text-align:right; }
+  .q-fillin   { border-top: 2px solid var(--muted); }
+  .q-fillin   .quad-label { color: var(--muted); top: 8px; left: 8px; }
+  .q-avoid    { border-top: 2px solid var(--c-backend); }
+  .q-avoid    .quad-label { color: var(--c-backend); top: 8px; right: 8px; text-align:right; }
+
+  /* dot overlay – absolutely positioned over entire grid */
+  .matrix-dot-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .matrix-dot {
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    pointer-events: all;
+    transition: transform 0.18s, box-shadow 0.18s;
+    z-index: 5;
+  }
+  .matrix-dot:hover {
+    transform: translate(-50%, -50%) scale(1.7);
+    z-index: 20;
+  }
+
+  /* x-axis label row */
+  .matrix-x-axis {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0 0 0;
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+  .matrix-x-center {
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 3px;
+    letter-spacing: 0.06em;
+  }
+
+  /* tooltip */
+  .matrix-tooltip {
+    position: fixed;
+    background: #1a1a28;
+    border: 1px solid var(--accent);
+    color: var(--text);
+    padding: 8px 13px;
+    border-radius: 8px;
+    font-size: 0.79rem;
+    pointer-events: none;
+    z-index: 9999;
+    white-space: nowrap;
+    box-shadow: var(--glow);
+    opacity: 0;
+    transition: opacity 0.15s;
+    line-height: 1.5;
+  }
+  .matrix-tooltip.visible { opacity: 1; }
+
+  /* ── Footer ───────────────────────────────── */
+  footer {
+    text-align: center;
+    padding: 22px;
+    color: var(--muted);
+    font-size: 0.76rem;
+    letter-spacing: 0.1em;
+    border-top: 1px solid var(--border);
+    margin-top: 48px;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ Header ══════════════════════════════════════════════ -->
+<header>
+  <h1>JARVIS</h1>
+  <div class="tab-bar">
+    <button class="tab-btn active" id="btn-mindmap" onclick="switchView('mindmap', this)">Mind Map</button>
+    <button class="tab-btn"        id="btn-kanban"  onclick="switchView('kanban',  this)">Kanban Board</button>
+    <button class="tab-btn"        id="btn-matrix"  onclick="switchView('matrix',  this)">Priority Matrix</button>
+  </div>
+</header>
+
+<!-- ══ VIEW 1: MIND MAP ════════════════════════════════════ -->
+<div id="view-mindmap" class="view active">
+  <svg id="mindmap-svg" viewBox="0 0 960 660" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="glow-lg" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-sm" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="3" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g id="mm-paths"></g>
+    <g id="mm-nodes"></g>
+  </svg>
+  <div class="mm-legend">
+    <div class="mm-legend-item"><div class="mm-legend-dot" style="background:#6366f1"></div>Learning</div>
+    <div class="mm-legend-item"><div class="mm-legend-dot" style="background:#ef4444"></div>Backend</div>
+    <div class="mm-legend-item"><div class="mm-legend-dot" style="background:#f59e0b"></div>UI/UX</div>
+    <div class="mm-legend-item"><div class="mm-legend-dot" style="background:#3b82f6"></div>Integrations</div>
+  </div>
+  <div class="mm-hint">Click a branch or leaf node to highlight its category — click again to reset</div>
+</div>
+
+<!-- ══ VIEW 2: KANBAN ══════════════════════════════════════ -->
+<div id="view-kanban" class="view">
+  <div class="kanban-board">
+
+    <!-- NOW -->
+    <div class="kanban-col col-now" id="col-now"
+         ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+      <div class="kanban-col-header">
+        <span style="font-size:1.1rem">✅</span>
+        <span class="kanban-col-title">Now</span>
+        <span class="kanban-col-count" id="count-now">4</span>
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-ui">UI</span></div>
+        Settings toggle UI pattern ✅
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-integr">Integrations</span></div>
+        SQLite memory system ✅
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-backend">Backend</span></div>
+        Personality.md system ✅
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-integr">Integrations</span></div>
+        Conversation history ✅
+      </div>
+    </div>
+
+    <!-- NEXT -->
+    <div class="kanban-col col-next" id="col-next"
+         ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+      <div class="kanban-col-header">
+        <span style="font-size:1.1rem">🔨</span>
+        <span class="kanban-col-title">Next</span>
+        <span class="kanban-col-count" id="count-next">4</span>
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-ui">UI</span></div>
+        Study Mode settings toggle
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-backend">Backend</span></div>
+        Socratic system prompt injection in server.py
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-ui">UI</span></div>
+        Orb indigo colour state
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-learning">Learning</span></div>
+        "No shortcuts" response filter
+      </div>
+    </div>
+
+    <!-- LATER -->
+    <div class="kanban-col col-later" id="col-later"
+         ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+      <div class="kanban-col-header">
+        <span style="font-size:1.1rem">📋</span>
+        <span class="kanban-col-title">Later</span>
+        <span class="kanban-col-count" id="count-later">4</span>
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-backend">Backend</span></div>
+        Topic tracking in SQLite
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-ui">UI</span></div>
+        Session summary on toggle-off
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-learning">Learning</span></div>
+        Strength/weakness assessment
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-backend">Backend</span></div>
+        Study streak tracking
+      </div>
+    </div>
+
+    <!-- IDEAS -->
+    <div class="kanban-col col-ideas" id="col-ideas"
+         ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)">
+      <div class="kanban-col-header">
+        <span style="font-size:1.1rem">💡</span>
+        <span class="kanban-col-title">Ideas</span>
+        <span class="kanban-col-count" id="count-ideas">4</span>
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-ideas">Ideas</span></div>
+        Flashcard generation from sessions
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-ideas">Ideas</span></div>
+        Export study notes as PDF
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-ideas">Ideas</span></div>
+        Spaced repetition reminders
+      </div>
+      <div class="kanban-card" draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)">
+        <div><span class="card-tag tag-ideas">Ideas</span></div>
+        Voice quiz mode
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ VIEW 3: PRIORITY MATRIX ════════════════════════════ -->
+<div id="view-matrix" class="view">
+  <div class="matrix-outer">
+    <div class="matrix-title">Impact vs Effort — Study Mode Features</div>
+
+    <div style="display:flex; gap:0; align-items:stretch;">
+      <!-- Y-axis label -->
+      <div style="display:flex; flex-direction:column; align-items:center; justify-content:space-between;
+                  width:26px; padding: 4px 0; font-size:0.66rem; color:var(--muted); letter-spacing:0.05em;">
+        <span style="writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap;">High Impact</span>
+        <span style="writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; margin-top:auto;">Low Impact</span>
+      </div>
+
+      <!-- Grid + x-axis -->
+      <div style="flex:1; display:flex; flex-direction:column; gap:0;">
+        <div class="matrix-grid" id="matrix-grid">
+          <!-- Top-left: Quick Wins (High Impact, Low Effort) -->
+          <div class="matrix-quadrant q-quickwin">
+            <div class="quad-label">Quick Wins</div>
+          </div>
+          <!-- Top-right: Big Bets (High Impact, High Effort) -->
+          <div class="matrix-quadrant q-bigbet">
+            <div class="quad-label">Big Bets</div>
+          </div>
+          <!-- Bottom-left: Fill-ins (Low Impact, Low Effort) -->
+          <div class="matrix-quadrant q-fillin">
+            <div class="quad-label">Fill-ins</div>
+          </div>
+          <!-- Bottom-right: Avoid (Low Impact, High Effort) -->
+          <div class="matrix-quadrant q-avoid">
+            <div class="quad-label">Avoid</div>
+          </div>
+
+          <!-- Dot overlay -->
+          <div class="matrix-dot-layer" id="matrix-dot-layer"></div>
+        </div>
+
+        <!-- X-axis -->
+        <div class="matrix-x-axis">
+          <span>Low Effort</span>
+          <span>High Effort</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tooltip (shared) -->
+<div class="matrix-tooltip" id="matrix-tooltip"></div>
+
+<footer>JARVIS — Study Mode Feature Plan</footer>
+
+<!-- ══════════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════════ -->
+<script>
+/* ── View Switching ────────────────────────── */
+function switchView(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+/* ══════════════════════════════════════════
+   MIND MAP
+══════════════════════════════════════════ */
+(function buildMindMap() {
+  const W = 960, H = 660;
+  const CX = W / 2, CY = H / 2;
+
+  const categories = [
+    {
+      id: 'learning', label: '🎓 Learning', color: '#6366f1',
+      angle: -135,   // top-left
+      dist: 195,
+      children: ['Socratic\nquestioning', 'Quiz-back', 'Concept\nexplanation', 'No shortcuts']
+    },
+    {
+      id: 'backend', label: '⚙️ Backend', color: '#ef4444',
+      angle: -45,    // top-right
+      dist: 195,
+      children: ['study_mode\nflag', 'Socratic prompt\ninjection', 'SQLite topic\nlogging', 'Session\nsummary']
+    },
+    {
+      id: 'uiux', label: '🎨 UI/UX', color: '#f59e0b',
+      angle: 45,     // bottom-right
+      dist: 195,
+      children: ['Settings\ntoggle', 'Orb indigo\nstate', 'Summary\nspoken', 'Personality\nshift']
+    },
+    {
+      id: 'integr', label: '🔗 Integrations', color: '#3b82f6',
+      angle: 135,    // bottom-left
+      dist: 195,
+      children: ['Existing\ntoggle UI', 'SQLite\nmemory', 'Conversation\nhistory', 'personality\n.md']
+    }
+  ];
+
+  function toRad(d) { return d * Math.PI / 180; }
+  function polarPos(ox, oy, r, deg) {
+    return { x: ox + r * Math.cos(toRad(deg)), y: oy + r * Math.sin(toRad(deg)) };
+  }
+
+  const pathsG = document.getElementById('mm-paths');
+  const nodesG = document.getElementById('mm-nodes');
+  const allPaths = [];
+  const allNodes = [];
+
+  // Centre node
+  allNodes.push({
+    id: 'center', x: CX, y: CY, r: 50,
+    color: '#6366f1', label: 'Study\nMode',
+    fs: 14, bold: true, cat: null, isCenter: true
+  });
+
+  categories.forEach(cat => {
+    const bp = polarPos(CX, CY, cat.dist, cat.angle);
+
+    allPaths.push({ id: `p-${cat.id}`, cat: cat.id, color: cat.color,
+      x1: CX, y1: CY, x2: bp.x, y2: bp.y });
+
+    allNodes.push({ id: `n-${cat.id}`, x: bp.x, y: bp.y, r: 40,
+      color: cat.color, label: cat.label, fs: 11, bold: true, cat: cat.id });
+
+    const childDist = 115;
+    const spread = 62;
+    const n = cat.children.length;
+    const baseAngle = cat.angle;
+
+    cat.children.forEach((child, i) => {
+      const off = (i - (n - 1) / 2) * spread;
+      const childAngle = baseAngle + off;
+      const cp = polarPos(bp.x, bp.y, childDist, childAngle);
+
+      allPaths.push({ id: `p-${cat.id}-${i}`, cat: cat.id, color: cat.color,
+        x1: bp.x, y1: bp.y, x2: cp.x, y2: cp.y });
+
+      allNodes.push({ id: `n-${cat.id}-${i}`, x: cp.x, y: cp.y, r: 30,
+        color: cat.color, label: child, fs: 9.5, bold: false, cat: cat.id });
+    });
+  });
+
+  // Render paths
+  allPaths.forEach(p => {
+    const dx = p.x2 - p.x1, dy = p.y2 - p.y1;
+    const cx1 = p.x1 + dx * 0.35 - dy * 0.08;
+    const cy1 = p.y1 + dy * 0.35 + dx * 0.08;
+    const cx2 = p.x2 - dx * 0.35 - dy * 0.08;
+    const cy2 = p.y2 - dy * 0.35 + dx * 0.08;
+
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('d', `M${p.x1},${p.y1} C${cx1},${cy1} ${cx2},${cy2} ${p.x2},${p.y2}`);
+    el.setAttribute('class', 'mm-path');
+    el.setAttribute('stroke', p.color);
+    el.setAttribute('id', p.id);
+    el.dataset.cat = p.cat;
+    pathsG.appendChild(el);
+  });
+
+  // Render nodes
+  allNodes.forEach(n => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'mm-node');
+    g.setAttribute('id', n.id);
+    g.dataset.cat = n.cat || '';
+
+    const circ = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circ.setAttribute('cx', n.x);
+    circ.setAttribute('cy', n.y);
+    circ.setAttribute('r', n.r);
+    circ.setAttribute('fill', n.color + (n.isCenter ? '2e' : '1e'));
+    circ.setAttribute('stroke', n.color);
+    circ.setAttribute('stroke-width', n.bold ? 2 : 1.5);
+    if (n.isCenter) circ.setAttribute('filter', 'url(#glow-lg)');
+    g.appendChild(circ);
+
+    const lines = n.label.split('\n');
+    const lh = n.fs * 1.35;
+    const totalH = (lines.length - 1) * lh;
+    lines.forEach((line, li) => {
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', n.x);
+      t.setAttribute('y', n.y - totalH / 2 + li * lh + n.fs * 0.38);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('font-size', n.fs);
+      t.setAttribute('fill', '#e2e8f0');
+      t.setAttribute('font-weight', n.bold ? '700' : '500');
+      t.setAttribute('font-family', "-apple-system,'Segoe UI',sans-serif");
+      t.textContent = line;
+      g.appendChild(t);
+    });
+
+    if (!n.isCenter) {
+      g.addEventListener('click', () => highlight(n.cat));
+    }
+    nodesG.appendChild(g);
+  });
+
+  let active = null;
+  function highlight(cat) {
+    if (active === cat) {
+      active = null;
+      document.querySelectorAll('.mm-path').forEach(e => e.classList.remove('highlighted','dimmed'));
+      document.querySelectorAll('.mm-node').forEach(e => e.classList.remove('dimmed'));
+      return;
+    }
+    active = cat;
+    document.querySelectorAll('.mm-path').forEach(e => {
+      e.classList.toggle('highlighted', e.dataset.cat === cat);
+      e.classList.toggle('dimmed',      e.dataset.cat !== cat);
+    });
+    document.querySelectorAll('.mm-node').forEach(e => {
+      const c = e.dataset.cat;
+      e.classList.toggle('dimmed', c !== cat && c !== '');
+    });
+  }
+})();
+
+/* ══════════════════════════════════════════
+   KANBAN
+══════════════════════════════════════════ */
+let draggedCard = null;
+
+function dragStart(e) {
+  draggedCard = e.currentTarget;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function dragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
+  draggedCard = null;
+  updateCounts();
+}
+function allowDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add('drag-over');
+}
+function dragLeave(e) {
+  if (!e.currentTarget.contains(e.relatedTarget)) {
+    e.currentTarget.classList.remove('drag-over');
+  }
+}
+function drop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (draggedCard && e.currentTarget !== draggedCard.closest('.kanban-col')) {
+    e.currentTarget.appendChild(draggedCard);
+    updateCounts();
+  }
+}
+function updateCounts() {
+  ['now','next','later','ideas'].forEach(id => {
+    const col = document.getElementById('col-' + id);
+    document.getElementById('count-' + id).textContent =
+      col.querySelectorAll('.kanban-card').length;
+  });
+}
+
+/* ══════════════════════════════════════════
+   PRIORITY MATRIX
+══════════════════════════════════════════ */
+(function buildMatrix() {
+  /*
+    Grid coordinate system (normalised 0–1):
+      x: 0 = left (Low Effort) → 1 = right (High Effort)
+      y: 0 = top  (High Impact) → 1 = bottom (Low Impact)
+
+    Quadrant mapping:
+      Top-left    (x<0.5, y<0.5) → Quick Wins
+      Top-right   (x>0.5, y<0.5) → Big Bets
+      Bottom-left (x<0.5, y>0.5) → Fill-ins
+      Bottom-right(x>0.5, y>0.5) → Avoid
+  */
+  const items = [
+    { label: 'Settings toggle',           x: 0.18, y: 0.38, color: '#f59e0b', quad: 'Quick Win'  },
+    { label: 'Socratic prompt injection',  x: 0.22, y: 0.13, color: '#6366f1', quad: 'Quick Win'  },
+    { label: 'Orb indigo state',           x: 0.14, y: 0.72, color: '#f59e0b', quad: 'Fill-in'   },
+    { label: 'Topic SQLite logging',       x: 0.44, y: 0.33, color: '#3b82f6', quad: 'Quick Win'  },
+    { label: 'Session summary',            x: 0.56, y: 0.19, color: '#6366f1', quad: 'Big Bet'   },
+    { label: 'Flashcard generation',       x: 0.78, y: 0.17, color: '#10b981', quad: 'Big Bet'   },
+    { label: 'Spaced repetition',          x: 0.82, y: 0.42, color: '#10b981', quad: 'Big Bet'   },
+    { label: 'Export PDF notes',           x: 0.86, y: 0.78, color: '#ef4444', quad: 'Avoid'     }
+  ];
+
+  const layer   = document.getElementById('matrix-dot-layer');
+  const tooltip = document.getElementById('matrix-tooltip');
+
+  items.forEach(item => {
+    const dot = document.createElement('div');
+    dot.className = 'matrix-dot';
+    dot.style.left       = (item.x * 100) + '%';
+    dot.style.top        = (item.y * 100) + '%';
+    dot.style.background = item.color;
+    dot.style.boxShadow  = `0 0 0 2px ${item.color}55, 0 0 10px ${item.color}44`;
+
+    dot.addEventListener('mouseenter', e => {
+      tooltip.innerHTML =
+        `<strong style="color:${item.color}">${item.label}</strong><br>` +
+        `<span style="font-size:0.72rem;color:var(--muted)">${item.quad}</span>`;
+      tooltip.classList.add('visible');
+      moveTooltip(e);
+    });
+    dot.addEventListener('mousemove', moveTooltip);
+    dot.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+    layer.appendChild(dot);
+  });
+
+  function moveTooltip(e) {
+    const tw = tooltip.offsetWidth  || 180;
+    const th = tooltip.offsetHeight || 52;
+    let x = e.clientX + 16;
+    let y = e.clientY - 10;
+    if (x + tw > window.innerWidth  - 8) x = e.clientX - tw - 12;
+    if (y + th > window.innerHeight - 8) y = e.clientY - th - 10;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top  = y + 'px';
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>JARVIS — Six Modes Visual Plan</title>
+<style>
+  :root {
+    --amber: #f59e0b; --amber-dim: rgba(245,158,11,0.15);
+    --red: #ef4444;   --red-dim: rgba(239,68,68,0.15);
+    --green: #22c55e; --green-dim: rgba(34,197,94,0.15);
+    --violet: #8b5cf6;--violet-dim: rgba(139,92,246,0.15);
+    --sky: #0ea5e9;   --sky-dim: rgba(14,165,233,0.15);
+    --rose: #f43f5e;  --rose-dim: rgba(244,63,94,0.15);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #050508;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* ── Particle canvas ── */
+  #particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+  /* ── Hero ── */
+  .hero {
+    position: relative; z-index: 1;
+    text-align: center;
+    padding: 100px 20px 60px;
+  }
+  .hero-eyebrow {
+    font-size: 11px; letter-spacing: 0.25em; color: #6b7280;
+    text-transform: uppercase; margin-bottom: 20px;
+    animation: fadeUp 0.8s ease both;
+  }
+  .hero-title {
+    font-size: clamp(48px, 8vw, 96px);
+    font-weight: 800; letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #fff 0%, #9ca3af 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: fadeUp 0.8s 0.1s ease both;
+  }
+  .hero-sub {
+    margin-top: 16px; font-size: 20px; color: #6b7280; font-weight: 300;
+    animation: fadeUp 0.8s 0.2s ease both;
+  }
+  .hero-sub span { color: #9ca3af; }
+
+  /* ── Grid ── */
+  .section { position: relative; z-index: 1; padding: 0 24px 80px; max-width: 1200px; margin: 0 auto; }
+  .section-label {
+    font-size: 11px; letter-spacing: 0.2em; color: #374151;
+    text-transform: uppercase; text-align: center; margin-bottom: 40px;
+  }
+  .modes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 20px;
+  }
+
+  /* ── Mode card ── */
+  .mode-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 28px;
+    transition: transform 0.2s, border-color 0.2s;
+    animation: fadeUp 0.6s ease both;
+  }
+  .mode-card:hover { transform: translateY(-4px); }
+
+  .card-top { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+
+  /* Orb */
+  .orb-wrap { position: relative; width: 56px; height: 56px; flex-shrink: 0; }
+  .orb-core {
+    position: absolute; inset: 8px;
+    border-radius: 50%;
+    animation: orbPulse 3s ease-in-out infinite;
+  }
+  .orb-ring {
+    position: absolute; inset: 0;
+    border-radius: 50%; border: 1.5px solid;
+    animation: orbRing 3s ease-in-out infinite;
+    opacity: 0.4;
+  }
+  .orb-glow {
+    position: absolute; inset: -8px;
+    border-radius: 50%;
+    animation: orbGlow 3s ease-in-out infinite;
+    opacity: 0.15;
+    filter: blur(8px);
+  }
+  @keyframes orbPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+  @keyframes orbRing  { 0%,100%{transform:scale(1);opacity:0.4} 50%{transform:scale(1.2);opacity:0.1} }
+  @keyframes orbGlow  { 0%,100%{transform:scale(1)} 50%{transform:scale(1.3)} }
+
+  .card-info { flex: 1; }
+  .card-name { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .card-tag  { font-size: 12px; color: #6b7280; margin-top: 3px; letter-spacing: 0.03em; }
+
+  .card-desc { font-size: 14px; color: #9ca3af; line-height: 1.6; margin-bottom: 18px; }
+
+  /* Chat demo */
+  .chat-demo { display: flex; flex-direction: column; gap: 8px; }
+  .bubble {
+    border-radius: 12px; padding: 10px 14px;
+    font-size: 13px; line-height: 1.5; max-width: 90%;
+  }
+  .bubble-user {
+    align-self: flex-end;
+    background: rgba(255,255,255,0.06);
+    color: #d1d5db;
+  }
+  .bubble-jarvis {
+    align-self: flex-start;
+    border: 1px solid;
+    color: #fff;
+  }
+  .bubble-label {
+    font-size: 9px; letter-spacing: 0.12em; font-weight: 600;
+    text-transform: uppercase; margin-bottom: 4px; opacity: 0.7;
+  }
+
+  /* Color variants */
+  .focus-card    { border-color: rgba(245,158,11,0.2); }
+  .focus-card:hover { border-color: rgba(245,158,11,0.45); }
+  .brutal-card   { border-color: rgba(239,68,68,0.2); }
+  .brutal-card:hover { border-color: rgba(239,68,68,0.45); }
+  .health-card   { border-color: rgba(34,197,94,0.2); }
+  .health-card:hover { border-color: rgba(34,197,94,0.45); }
+  .debate-card   { border-color: rgba(139,92,246,0.2); }
+  .debate-card:hover { border-color: rgba(139,92,246,0.45); }
+  .exec-card     { border-color: rgba(14,165,233,0.2); }
+  .exec-card:hover { border-color: rgba(14,165,233,0.45); }
+  .vent-card     { border-color: rgba(244,63,94,0.2); }
+  .vent-card:hover { border-color: rgba(244,63,94,0.45); }
+
+  /* ── Radar chart ── */
+  .radar-section { text-align: center; padding: 0 24px 80px; max-width: 900px; margin: 0 auto; position: relative; z-index: 1; }
+  .radar-title { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .radar-sub { font-size: 14px; color: #6b7280; margin-bottom: 40px; }
+  .radar-wrap { position: relative; display: inline-block; }
+  svg.radar { overflow: visible; }
+
+  /* ── Quiz ── */
+  .quiz-section {
+    position: relative; z-index: 1;
+    max-width: 640px; margin: 0 auto; padding: 0 24px 100px;
+    text-align: center;
+  }
+  .quiz-title { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  .quiz-sub { font-size: 15px; color: #6b7280; margin-bottom: 40px; }
+
+  .quiz-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 32px;
+  }
+  .quiz-q { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .quiz-step { font-size: 11px; color: #4b5563; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px; }
+  .quiz-options { display: flex; flex-direction: column; gap: 10px; }
+  .quiz-opt {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 14px; color: #d1d5db;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .quiz-opt:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+  .quiz-opt.selected { border-color: #6b7280; background: rgba(255,255,255,0.06); }
+
+  .quiz-result {
+    display: none;
+    text-align: center;
+    padding: 8px 0;
+  }
+  .quiz-result.show { display: block; }
+  .result-orb {
+    width: 80px; height: 80px; border-radius: 50%;
+    margin: 0 auto 16px;
+    animation: orbPulse 2s ease-in-out infinite;
+  }
+  .result-name { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .result-why  { font-size: 15px; color: #9ca3af; line-height: 1.6; }
+  .quiz-restart {
+    margin-top: 20px;
+    background: none; border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px; padding: 10px 24px;
+    color: #9ca3af; font-size: 13px; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .quiz-restart:hover { border-color: rgba(255,255,255,0.35); color: #fff; }
+
+  /* ── Progress bar ── */
+  .quiz-progress { display: flex; gap: 6px; margin-bottom: 24px; justify-content: center; }
+  .progress-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    transition: background 0.2s;
+  }
+  .progress-dot.done { background: rgba(255,255,255,0.5); }
+
+  /* ── Footer ── */
+  footer {
+    position: relative; z-index: 1;
+    text-align: center; padding: 20px;
+    color: #374151; font-size: 12px; letter-spacing: 0.05em;
+    border-top: 1px solid rgba(255,255,255,0.04);
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s;  }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s;  }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.3s;  }
+</style>
+</head>
+<body>
+
+<canvas id="particles"></canvas>
+
+<!-- ── HERO ── -->
+<div class="hero">
+  <div class="hero-eyebrow">JARVIS — Feature Planning</div>
+  <div class="hero-title">Six Modes</div>
+  <div class="hero-sub">One JARVIS. <span>Six personalities.</span> Toggle on demand.</div>
+</div>
+
+<!-- ── MODES GRID ── -->
+<div class="section">
+  <div class="section-label">The Six Modes</div>
+  <div class="modes-grid">
+
+    <!-- FOCUS -->
+    <div class="mode-card focus-card stagger-1">
+      <div class="card-top">
+        <div class="orb-wrap">
+          <div class="orb-glow"  style="background:var(--amber)"></div>
+          <div class="orb-ring"  style="border-color:var(--amber)"></div>
+          <div class="orb-core"  style="background:radial-gradient(circle at 35% 35%, #fcd34d, var(--amber));"></div>
+        </div>
+        <div class="card-info">
+          <div class="card-name" style="color:var(--amber)">Focus Mode</div>
+          <div class="card-tag">Amber · Pure Execution</div>
+        </div>
+      </div>
+      <div class="card-desc">No tangents, no small talk. JARVIS locks in with you — tasks only, maximum momentum. Every response moves the needle.</div>
+      <div class="chat-demo">
+        <div class="bubble bubble-user">Hey, what did you think of that movie last night?</div>
+        <div class="bubble bubble-jarvis" style="border-color:rgba(245,158,11,0.4); background:rgba(245,158,11,0.06)">
+          <div class="bubble-label" style="color:var(--amber)">JARVIS — Focus Mode</div>
+          You have 3 open tasks. That's off-topic. What's your next action?
+        </div>
+      </div>
+    </div>
+
+    <!-- BRUTAL HONESTY -->
+    <div class="mode-card brutal-card stagger-2">
+      <div class="card-top">
+        <div class="orb-wrap">
+          <div class="orb-glow"  style="background:var(--red)"></div>
+          <div class="orb-ring"  style="border-color:var(--red)"></div>
+          <div class="orb-core"  style="background:radial-gradient(circle at 35% 35%, #fca5a5, var(--red));"></div>
+        </div>
+        <div class="card-info">
+          <div class="card-name" style="color:var(--red)">Brutal Honesty</div>
+          <div class="card-tag">Crimson · No Filter</div>
+        </div>
+      </div>
+      <div class="card-desc">Harsh truth, no flattery. You show JARVIS your work — he finds every flaw, every gap. No sugar-coating. That's exactly what makes it valuable.</div>
+      <div class="chat-demo">
+        <div class="bubble bubble-user">Here's my startup pitch. What do you think?</div>
+        <div class="bubble bubble-jarvis" style="border-color:rgba(239,68,68,0.4); background:rgba(239,68,68,0.06)">
+          <div class="bubble-label" style="color:var(--red)">JARVIS — Brutal Honesty</div>
+          Three problems. Your market size is unsubstantiated. Your moat is non-existent. And the pricing model makes no sense. Start with the market.
+        </div>
+      </div>
+    </div>
+
+    <!-- HEALTH COACH -->
+    <div class="mode-card health-card stagger-3">
+      <div class="card-top">
+        <div class="orb-wrap">
+          <div class="orb-glow"  style="background:var(--green)"></div>
+          <div class="orb-ring"  style="border-color:var(--green)"></div>
+          <div class="orb-core"  style="background:radial-gradient(circle at 35% 35%, #86efac, var(--green));"></div>
+        </div>
+        <div class="card-info">
+          <div class="card-name" style="color:var(--green)">Health Coach</div>
+          <div class="card-tag">Lime · Wellness Focus</div>
+        </div>
+      </div>
+      <div class="card-desc">Your wellness companion. Sleep, nutrition, movement, mental health. JARVIS tracks your habits, asks the right questions, and holds you accountable.</div>
+      <div class="chat-demo">
+        <div class="bubble bubble-user">I've been exhausted and can't focus lately.</div>
+        <div class="bubble bubble-jarvis" style="border-color:rgba(34,197,94,0.4); background:rgba(34,197,94,0.06)">
+          <div class="bubble-label" style="color:var(--green)">JARVIS — Health Coach</div>
+          How many hours did you sleep last night, and what did you eat today before noon?
+        </div>
+      </div>
+    </div>
+
+    <!-- DEBATE -->
+    <div class="mode-card debate-card stagger-4">
+      <div class="card-top">
+        <div class="orb-wrap">
+          <div class="orb-glow"  style="background:var(--violet)"></div>
+          <div class="orb-ring"  style="border-color:var(--violet)"></div>
+          <div class="orb-core"  style="background:radial-gradient(circle at 35% 35%, #c4b5fd, var(--violet));"></div>
+        </div>
+        <div class="card-info">
+          <div class="card-name" style="color:var(--violet)">Debate Mode</div>
+          <div class="card-tag">Violet · Devil's Advocate</div>
+        </div>
+      </div>
+      <div class="card-desc">JARVIS argues against you — on purpose. He stress-tests every idea, pokes holes, plays devil's advocate. Ideas that survive JARVIS are ideas worth keeping.</div>
+      <div class="chat-demo">
+        <div class="bubble bubble-user">I think remote work is better for productivity.</div>
+        <div class="bubble bubble-jarvis" style="border-color:rgba(139,92,246,0.4); background:rgba(139,92,246,0.06)">
+          <div class="bubble-label" style="color:var(--violet)">JARVIS — Debate Mode</div>
+          Disagree. Serendipitous hallway conversations are worth more than the time saved commuting. What's your evidence for the productivity claim?
+        </div>
+      </div>
+    </div>
+
+    <!-- EXECUTIVE -->
+    <div class="mode-card exec-card stagger-5">
+      <div class="card-top">
+        <div class="orb-wrap">
+          <div class="orb-glow"  style="background:var(--sky)"></div>
+          <div class="orb-ring"  style="border-color:var(--sky)"></div>
+          <div class="orb-core"  style="background:radial-gradient(circle at 35% 35%, #7dd3fc, var(--sky));"></div>
+        </div>
+        <div class="card-info">
+          <div class="card-name" style="color:var(--sky)">Executive Mode</div>
+          <div class="card-tag">Sky Blue · C-Suite Brief</div>
+        </div>
+      </div>
+      <div class="card-desc">Maximum signal, zero noise. Bullet points. Priorities. Recommendations. JARVIS speaks like a C-suite advisor — because sometimes that's exactly what you need.</div>
+      <div class="chat-demo">
+        <div class="bubble bubble-user">Give me a summary of our Q3 situation.</div>
+        <div class="bubble bubble-jarvis" style="border-color:rgba(14,165,233,0.4); background:rgba(14,165,233,0.06)">
+          <div class="bubble-label" style="color:var(--sky)">JARVIS — Executive Mode</div>
+          ▸ Revenue: on track. ▸ Risk: hiring pipeline stalled. ▸ Action required: decide on contractor vs FTE by Friday.
+        </div>
+      </div>
+    </div>
+
+    <!-- VENTING -->
+    <div class="mode-card vent-card stagger-6">
+      <div class="card-top">
+        <div class="orb-wrap">
+          <div class="orb-glow"  style="background:var(--rose)"></div>
+          <div class="orb-ring"  style="border-color:var(--rose)"></div>
+          <div class="orb-core"  style="background:radial-gradient(circle at 35% 35%, #fda4af, var(--rose));"></div>
+        </div>
+        <div class="card-info">
+          <div class="card-name" style="color:var(--rose)">Venting Mode</div>
+          <div class="card-tag">Rose · Just Listen</div>
+        </div>
+      </div>
+      <div class="card-desc">Sometimes you don't want solutions. You just need to be heard. JARVIS listens, reflects, validates. No unsolicited advice. Just presence.</div>
+      <div class="chat-demo">
+        <div class="bubble bubble-user">I'm so tired of everything going wrong. Nothing works.</div>
+        <div class="bubble bubble-jarvis" style="border-color:rgba(244,63,94,0.4); background:rgba(244,63,94,0.06)">
+          <div class="bubble-label" style="color:var(--rose)">JARVIS — Venting Mode</div>
+          That sounds genuinely exhausting. You've been carrying a lot. Do you want to tell me more about what's been happening?
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── RADAR CHART ── -->
+<div class="radar-section">
+  <div class="section-label">Mode Comparison</div>
+  <div class="radar-title">Six Personalities at a Glance</div>
+  <div class="radar-sub">Each mode has a distinct energy profile — see which one fits your moment.</div>
+  <div class="radar-wrap">
+    <svg class="radar" width="560" height="560" viewBox="-280 -280 560 560">
+      <defs>
+        <filter id="glow-f"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <!-- Grid rings -->
+      <g id="grid" stroke="rgba(255,255,255,0.06)" fill="none">
+        <polygon id="hex5" points="0,-200 173.2,-100 173.2,100 0,200 -173.2,100 -173.2,-100"/>
+        <polygon points="0,-160 138.6,-80 138.6,80 0,160 -138.6,80 -138.6,-80"/>
+        <polygon points="0,-120 103.9,-60 103.9,60 0,120 -103.9,60 -103.9,-60"/>
+        <polygon points="0,-80 69.3,-40 69.3,40 0,80 -69.3,40 -69.3,-40"/>
+        <polygon points="0,-40 34.6,-20 34.6,20 0,40 -34.6,20 -34.6,-20"/>
+      </g>
+      <!-- Axis lines -->
+      <g stroke="rgba(255,255,255,0.08)">
+        <line x1="0" y1="0" x2="0" y2="-200"/>
+        <line x1="0" y1="0" x2="173.2" y2="-100"/>
+        <line x1="0" y1="0" x2="173.2" y2="100"/>
+        <line x1="0" y1="0" x2="0" y2="200"/>
+        <line x1="0" y1="0" x2="-173.2" y2="100"/>
+        <line x1="0" y1="0" x2="-173.2" y2="-100"/>
+      </g>
+      <!-- Axis labels -->
+      <g fill="#6b7280" font-size="13" font-family="system-ui,sans-serif" text-anchor="middle">
+        <text x="0" y="-218">Directness</text>
+        <text x="196" y="-108">Speed</text>
+        <text x="196" y="116">Challenge</text>
+        <text x="0" y="224">Warmth</text>
+        <text x="-196" y="116">Empathy</text>
+        <text x="-196" y="-108">Technical</text>
+      </g>
+      <!-- Mode polygons: axes order = Directness, Speed, Challenge, Warmth, Empathy, Technical -->
+      <!-- Focus: D=1.0 Sp=0.9 Ch=0.5 W=0.1 Em=0.2 Te=0.5 -->
+      <polygon
+        points="0,-200 155.9,-90 86.6,50 0,20 -34.6,10 -86.6,-50"
+        fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="1.5" filter="url(#glow-f)"/>
+      <!-- Brutal: D=1.0 Sp=0.7 Ch=0.9 W=0.05 Em=0.1 Te=0.7 -->
+      <polygon
+        points="0,-200 121.2,-70 155.9,90 0,10 -17.3,5 -121.2,-70"
+        fill="rgba(239,68,68,0.1)" stroke="#ef4444" stroke-width="1.5" filter="url(#glow-f)"/>
+      <!-- Health: D=0.5 Sp=0.4 Ch=0.4 W=0.7 Em=0.9 Te=0.6 -->
+      <polygon
+        points="0,-100 69.3,-40 69.3,40 0,140 -155.9,90 -103.9,-60"
+        fill="rgba(34,197,94,0.1)" stroke="#22c55e" stroke-width="1.5" filter="url(#glow-f)"/>
+      <!-- Debate: D=0.9 Sp=0.6 Ch=1.0 W=0.2 Em=0.3 Te=0.8 -->
+      <polygon
+        points="0,-180 103.9,-60 173.2,100 0,40 -51.96,30 -138.6,-80"
+        fill="rgba(139,92,246,0.1)" stroke="#8b5cf6" stroke-width="1.5" filter="url(#glow-f)"/>
+      <!-- Executive: D=0.95 Sp=1.0 Ch=0.6 W=0.05 Em=0.1 Te=0.9 -->
+      <polygon
+        points="0,-190 173.2,-100 103.9,60 0,10 -17.3,5 -155.9,-90"
+        fill="rgba(14,165,233,0.1)" stroke="#0ea5e9" stroke-width="1.5" filter="url(#glow-f)"/>
+      <!-- Venting: D=0.2 Sp=0.3 Ch=0.1 W=0.95 Em=1.0 Te=0.1 -->
+      <polygon
+        points="0,-40 51.96,-30 17.3,10 0,190 -173.2,100 -17.3,-10"
+        fill="rgba(244,63,94,0.12)" stroke="#f43f5e" stroke-width="1.5" filter="url(#glow-f)"/>
+    </svg>
+  </div>
+  <!-- Legend -->
+  <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin-top:24px;">
+    <span style="font-size:13px;color:#f59e0b">● Focus</span>
+    <span style="font-size:13px;color:#ef4444">● Brutal Honesty</span>
+    <span style="font-size:13px;color:#22c55e">● Health Coach</span>
+    <span style="font-size:13px;color:#8b5cf6">● Debate</span>
+    <span style="font-size:13px;color:#0ea5e9">● Executive</span>
+    <span style="font-size:13px;color:#f43f5e">● Venting</span>
+  </div>
+</div>
+
+<!-- ── QUIZ ── -->
+<div class="quiz-section">
+  <div class="section-label">Decision Tool</div>
+  <div class="quiz-title">Which Mode First?</div>
+  <div class="quiz-sub">Answer three questions to get a recommendation on which mode to build first.</div>
+
+  <div class="quiz-card" id="quiz">
+    <div class="quiz-progress">
+      <div class="progress-dot done" id="dot0"></div>
+      <div class="progress-dot" id="dot1"></div>
+      <div class="progress-dot" id="dot2"></div>
+    </div>
+    <!-- Step 0 -->
+    <div class="quiz-step" id="step-label">Step 1 of 3</div>
+    <div class="quiz-q" id="quiz-question">What's your biggest daily frustration?</div>
+    <div class="quiz-options" id="quiz-options">
+      <button class="quiz-opt" data-q="0" data-a="0">I get distracted and lose momentum on tasks</button>
+      <button class="quiz-opt" data-q="0" data-a="1">People tell me what I want to hear, not the truth</button>
+      <button class="quiz-opt" data-q="0" data-a="2">I neglect sleep, diet, and exercise</button>
+      <button class="quiz-opt" data-q="0" data-a="3">My ideas never get properly stress-tested</button>
+      <button class="quiz-opt" data-q="0" data-a="4">Meetings and updates waste too much of my time</button>
+      <button class="quiz-opt" data-q="0" data-a="5">I feel unheard and have no one to process things with</button>
+    </div>
+    <div class="quiz-result" id="quiz-result">
+      <div class="result-orb" id="result-orb"></div>
+      <div class="result-name" id="result-name"></div>
+      <div class="result-why" id="result-why"></div>
+      <button class="quiz-restart" onclick="restartQuiz()">← Try Again</button>
+    </div>
+  </div>
+</div>
+
+<footer>JARVIS — Modes Feature Planning Document · 2024</footer>
+
+<script>
+// ── Particles ──
+const canvas = document.getElementById('particles');
+const ctx = canvas.getContext('2d');
+let W, H, pts = [];
+const N = 80;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+function initPts() {
+  pts = [];
+  for (let i = 0; i < N; i++) {
+    pts.push({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
+      r: Math.random() * 1.5 + 0.5,
+    });
+  }
+}
+function drawParticles() {
+  ctx.clearRect(0, 0, W, H);
+  pts.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0 || p.x > W) p.vx *= -1;
+    if (p.y < 0 || p.y > H) p.vy *= -1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fill();
+  });
+  // Connect nearby points
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d < 120) {
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(255,255,255,${0.04 * (1 - d/120)})`;
+        ctx.lineWidth = 0.5;
+        ctx.moveTo(pts[i].x, pts[i].y);
+        ctx.lineTo(pts[j].x, pts[j].y);
+        ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(drawParticles);
+}
+window.addEventListener('resize', () => { resize(); initPts(); });
+resize(); initPts(); drawParticles();
+
+// ── Quiz ──
+const MODES = [
+  { name: 'Focus Mode',       color: '#f59e0b', why: "You lose momentum easily — Focus Mode eliminates every distraction and keeps JARVIS locked onto your tasks.", bg: '#f59e0b' },
+  { name: 'Brutal Honesty',   color: '#ef4444', why: "You need real feedback, not validation. Brutal Honesty Mode will tell you exactly what's wrong before it's too late.", bg: '#ef4444' },
+  { name: 'Health Coach',     color: '#22c55e', why: "You're neglecting fundamentals. Health Coach Mode will hold you accountable to the habits that actually move the needle.", bg: '#22c55e' },
+  { name: 'Debate Mode',      color: '#8b5cf6', why: "Your ideas need stress-testing. Debate Mode will argue against you until only the strongest ideas survive.", bg: '#8b5cf6' },
+  { name: 'Executive Mode',   color: '#0ea5e9', why: "You're drowning in noise. Executive Mode cuts everything down to bullets, priorities, and next actions.", bg: '#0ea5e9' },
+  { name: 'Venting Mode',     color: '#f43f5e', why: "You need to be heard, not solved. Venting Mode gives you space to process without unsolicited advice.", bg: '#f43f5e' },
+];
+
+const QUESTIONS = [
+  {
+    q: "What's your biggest daily frustration?",
+    opts: [
+      "I get distracted and lose momentum on tasks",
+      "People tell me what I want to hear, not the truth",
+      "I neglect sleep, diet, and exercise",
+      "My ideas never get properly stress-tested",
+      "Meetings and updates waste too much of my time",
+      "I feel unheard and have no one to process things with",
+    ]
+  },
+  {
+    q: "What do you wish JARVIS would do more of?",
+    opts: [
+      "Keep me on track ruthlessly, no matter what",
+      "Be completely honest even when it stings",
+      "Ask me about my habits and hold me accountable",
+      "Challenge every idea before I commit to it",
+      "Give me only what I need to know, nothing else",
+      "Just listen without jumping to solutions",
+    ]
+  },
+  {
+    q: "When you're at your best, you are...",
+    opts: [
+      "Executing relentlessly without distraction",
+      "Receiving and acting on hard truths",
+      "Energised, sleeping well, moving your body",
+      "Making decisions that survive scrutiny",
+      "Moving fast with total clarity on priorities",
+      "Feeling genuinely understood by the people around you",
+    ]
+  },
+];
+
+let answers = [];
+let step = 0;
+
+function renderQuestion() {
+  const q = QUESTIONS[step];
+  document.getElementById('step-label').textContent = `Step ${step + 1} of 3`;
+  document.getElementById('quiz-question').textContent = q.q;
+  const optsEl = document.getElementById('quiz-options');
+  optsEl.innerHTML = '';
+  q.opts.forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'quiz-opt';
+    btn.textContent = opt;
+    btn.onclick = () => selectAnswer(i);
+    optsEl.appendChild(btn);
+  });
+  // Update dots
+  for (let i = 0; i < 3; i++) {
+    document.getElementById('dot' + i).className = 'progress-dot' + (i <= step ? ' done' : '');
+  }
+}
+
+function selectAnswer(idx) {
+  answers.push(idx);
+  if (step < 2) {
+    step++;
+    renderQuestion();
+  } else {
+    showResult();
+  }
+}
+
+function showResult() {
+  // Tally votes
+  const votes = [0,0,0,0,0,0];
+  answers.forEach(a => votes[a]++);
+  // Pick winner
+  let best = 0;
+  for (let i = 1; i < 6; i++) if (votes[i] > votes[best]) best = i;
+  const mode = MODES[best];
+
+  document.getElementById('quiz-options').style.display = 'none';
+  document.getElementById('quiz-question').style.display = 'none';
+  document.getElementById('step-label').style.display = 'none';
+  document.getElementById('result-orb').style.background = `radial-gradient(circle at 35% 35%, white, ${mode.color})`;
+  document.getElementById('result-name').textContent = mode.name;
+  document.getElementById('result-name').style.color = mode.color;
+  document.getElementById('result-why').textContent = mode.why;
+  document.getElementById('quiz-result').classList.add('show');
+  for (let i = 0; i < 3; i++) document.getElementById('dot' + i).className = 'progress-dot done';
+}
+
+function restartQuiz() {
+  answers = []; step = 0;
+  document.getElementById('quiz-options').style.display = '';
+  document.getElementById('quiz-question').style.display = '';
+  document.getElementById('step-label').style.display = '';
+  document.getElementById('quiz-result').classList.remove('show');
+  renderQuestion();
+}
+
+renderQuestion();
+</script>
+</body>
+</html>

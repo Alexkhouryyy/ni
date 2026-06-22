@@ -1,0 +1,19 @@
+{
+  "name": "jarvis-study-mode-trailer",
+  "version": "1.0.0",
+  "scripts": {
+    "preview": "remotion studio",
+    "render": "remotion render src/Root.tsx StudyModeTrailer out/study-mode.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.290",
+    "remotion": "4.0.290",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.1",
+    "typescript": "5.4.5"
+  },
+  "remotion": { "entryPoint": "src/Root.tsx" }
+}

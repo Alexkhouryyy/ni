@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="JARVIS" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>JARVIS</title>
+  </head>
+  <body>
+    <div id="app">
+
+      <!-- Setup screen (shown on first launch) -->
+      <div id="setup-screen" class="screen" style="display:none">
+        <div class="setup-inner">
+          <div class="setup-logo">J.A.R.V.I.S.</div>
+          <p class="setup-sub">Just A Rather Very Intelligent System</p>
+          <div class="setup-form">
+            <label>Server IP Address</label>
+            <input
+              id="input-server-ip"
+              type="text"
+              inputmode="url"
+              placeholder="192.168.1.100"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="none"
+            />
+            <p class="setup-hint">
+              Enter your PC's local IP address.<br />
+              Before connecting, visit <span id="cert-url"></span> in this browser and accept the certificate.
+            </p>
+            <button id="btn-connect" class="btn-primary">Connect</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main voice screen -->
+      <div id="main-screen" class="screen" style="display:none">
+
+        <div class="header">
+          <span class="header-title">J.A.R.V.I.S.</span>
+          <button id="btn-settings-main" class="icon-btn" aria-label="Settings">⚙</button>
+        </div>
+
+        <!-- Orb -->
+        <div id="orb-container">
+          <div id="orb">
+            <div class="orb-ring ring-1"></div>
+            <div class="orb-ring ring-2"></div>
+            <div class="orb-ring ring-3"></div>
+            <div class="orb-core"></div>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div id="status-text" class="status-text"></div>
+
+        <!-- Transcript -->
+        <div id="transcript" class="transcript"></div>
+
+        <!-- Mic button -->
+        <div class="controls">
+          <button id="btn-mic" class="mic-btn" aria-label="Microphone">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <div class="mic-label" id="mic-label">Tap to speak</div>
+        </div>
+
+        <!-- Connection dot -->
+        <div id="conn-dot" class="conn-dot conn-off" title="Not connected"></div>
+
+      </div>
+
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
