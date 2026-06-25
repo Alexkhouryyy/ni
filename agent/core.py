@@ -1088,6 +1088,51 @@ TOOLS = [
             "required": [],
         },
     },
+    # --- Email: read inbox, read a message, stage a reply for approval ---
+    {
+        "name": "email_inbox",
+        "description": (
+            "List recent inbox messages (sender, subject, date, unread flag). Use when the user "
+            "asks 'check my email', 'any new mail', 'what's in my inbox'. For full triage with "
+            "summaries and reply suggestions, run the email_triage skill instead."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "default": 20},
+                "unread_only": {"type": "boolean", "default": False},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "email_read",
+        "description": "Read one inbox message's full body by its uid (from email_inbox).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"uid": {"type": "string"}},
+            "required": ["uid"],
+        },
+    },
+    {
+        "name": "email_draft",
+        "description": (
+            "Stage an email (or reply) for the user to approve and send from the dashboard. "
+            "This NEVER sends directly — it queues the draft for one-click approval. Use whenever "
+            "the user asks you to reply to or send an email. Pass in_reply_to with a message_id "
+            "(from email_read) when replying so threading is preserved."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient email address."},
+                "subject": {"type": "string"},
+                "body": {"type": "string"},
+                "in_reply_to": {"type": "string", "description": "Message-ID being replied to (optional)."},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
 ]
 
 
@@ -1467,6 +1512,28 @@ def _execute_tool(name: str, inputs: dict) -> str:
         elif name == "describe_screen":
             from tools import screen_vision as _sv
             return _sv.describe_screen(inputs.get("mode", "general"))
+
+        # --- Email ---
+        elif name == "email_inbox":
+            from tools import email_box
+            return json.dumps(
+                email_box.fetch_inbox(
+                    limit=int(inputs.get("limit", 20)),
+                    unread_only=bool(inputs.get("unread_only", False)),
+                ),
+                indent=2, default=str,
+            )
+        elif name == "email_read":
+            from tools import email_box
+            return json.dumps(email_box.read_message(inputs["uid"]), indent=2, default=str)
+        elif name == "email_draft":
+            from agent import approvals as _appr
+            return _appr.stage("email", {
+                "to": inputs["to"],
+                "subject": inputs.get("subject", ""),
+                "body": inputs.get("body", ""),
+                "in_reply_to": inputs.get("in_reply_to"),
+            })
 
         else:
             # Try dynamic tools registered via self_mod

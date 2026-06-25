@@ -233,6 +233,15 @@ ORB_ENABLED = os.getenv("ORB_ENABLED", "false").lower() in {"1", "true", "yes"}
 PROFILE_DIGEST_ENABLED = os.getenv("PROFILE_DIGEST_ENABLED", "true").lower() in {"1", "true", "yes"}
 PROFILE_DIGEST_INTERVAL_SECONDS = int(os.getenv("PROFILE_DIGEST_INTERVAL_SECONDS", "3600"))
 
+# === Email — IMAP inbox triage + SMTP send (opt-in; off until configured) ===
+# Use an app-specific password, never your main account password.
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+EMAIL_IMAP_HOST = os.getenv("EMAIL_IMAP_HOST", "")     # blank = auto from address domain
+EMAIL_IMAP_PORT = int(os.getenv("EMAIL_IMAP_PORT", "993"))
+EMAIL_SMTP_HOST = os.getenv("EMAIL_SMTP_HOST", "")     # blank = auto from address domain
+EMAIL_SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", "587"))
+
 # IoT — Home Assistant integration (opt-in, off by default)
 IOT_ENABLED = os.getenv("IOT_ENABLED", "false").lower() in {"1", "true", "yes"}
 IOT_HA_URL = os.getenv("IOT_HA_URL", "")          # e.g. http://homeassistant.local:8123

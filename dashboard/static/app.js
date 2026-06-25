@@ -204,6 +204,7 @@ async function loadTab(tab) {
     graph: loadGraph,
     reflections: loadReflections,
     evolution: loadEvolution,
+    inbox: loadInbox,
     telemetry: loadTelemetry,
     replay: loadReplay,
     briefing: loadBriefing,
@@ -951,6 +952,135 @@ async function loadEvolution() {
     }).join('');
   }
 }
+
+// ============== INBOX ==============
+async function loadInbox() {
+  const unreadOnly = document.getElementById('inbox-unread-only')?.checked || false;
+  const status = document.getElementById('inbox-status');
+  const list = document.getElementById('inbox-list');
+  if (status) status.textContent = 'Loading…';
+  let data;
+  try {
+    data = await api('/api/email/inbox?limit=25&unread_only=' + unreadOnly);
+  } catch (e) {
+    list.innerHTML = `<div class="evo-empty">Failed: ${escapeHTML(e.message)}</div>`;
+    if (status) status.textContent = '';
+    return;
+  }
+  if (!data.configured) {
+    list.innerHTML = `<div class="evo-empty">Email not configured. Add <code>EMAIL_ADDRESS</code> and
+      <code>EMAIL_PASSWORD</code> (an app-specific password) to your .env and restart Apex.</div>`;
+    if (status) status.textContent = 'not configured';
+    document.getElementById('inbox-count').textContent = '';
+    loadInboxDrafts();
+    return;
+  }
+  const msgs = data.messages || [];
+  if (msgs[0]?.error) {
+    list.innerHTML = `<div class="evo-empty">${escapeHTML(msgs[0].error)}</div>`;
+  } else if (!msgs.length) {
+    list.innerHTML = `<div class="evo-empty">Inbox clear. ✓</div>`;
+  } else {
+    list.innerHTML = msgs.map(m => `
+      <div class="inbox-msg ${m.unread ? 'inbox-unread' : ''}" onclick="openMessage('${m.uid}')">
+        <div class="inbox-msg-top">
+          <span class="inbox-from">${m.unread ? '<span class="inbox-dot"></span>' : ''}${escapeHTML(m.from || '')}</span>
+          <span class="inbox-date">${escapeHTML((m.date || '').slice(0, 22))}</span>
+        </div>
+        <div class="inbox-subject">${escapeHTML(m.subject || '(no subject)')}</div>
+      </div>`).join('');
+  }
+  document.getElementById('inbox-count').textContent = `${msgs.length} message(s)`;
+  if (status) status.textContent = '';
+  loadInboxDrafts();
+}
+
+async function loadInboxDrafts() {
+  const wrap = document.getElementById('inbox-drafts');
+  if (!wrap) return;
+  try {
+    const data = await api('/api/staged-writes');
+    const drafts = (data.writes || []).filter(w => w.kind === 'email');
+    if (!drafts.length) { wrap.innerHTML = `<div class="evo-empty">No drafts staged.</div>`; return; }
+    wrap.innerHTML = drafts.map(d => `
+      <div class="inbox-draft">
+        <div class="inbox-draft-head"><code>${escapeHTML(d.payload.to || '')}</code></div>
+        <div class="inbox-draft-subj">${escapeHTML(d.payload.subject || '')}</div>
+        <div class="inbox-draft-body">${escapeHTML((d.payload.body || '').slice(0, 280))}</div>
+        <div class="inbox-draft-actions">
+          <button class="accept" onclick="sendDraft(${d.id})">Approve &amp; send</button>
+          <button class="reject" onclick="discardDraft(${d.id})">Discard</button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    wrap.innerHTML = `<div class="evo-empty">Failed to load drafts: ${escapeHTML(e.message)}</div>`;
+  }
+}
+
+async function openMessage(uid) {
+  const reader = document.getElementById('inbox-reader');
+  reader.style.display = 'block';
+  reader.innerHTML = `<div class="evo-empty">Loading message…</div>`;
+  reader.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  try {
+    const m = await api('/api/email/message/' + encodeURIComponent(uid));
+    if (m.error) { reader.innerHTML = `<div class="evo-empty">${escapeHTML(m.error)}</div>`; return; }
+    reader.innerHTML = `
+      <div class="inbox-reader-head">
+        <button class="inbox-reader-close" onclick="document.getElementById('inbox-reader').style.display='none'">✕</button>
+        <div class="inbox-reader-subj">${escapeHTML(m.subject || '')}</div>
+        <div class="inbox-reader-meta">From ${escapeHTML(m.from || '')} · ${escapeHTML(m.date || '')}</div>
+      </div>
+      <pre class="inbox-reader-body">${escapeHTML(m.body || '(empty)')}</pre>
+      <div class="inbox-reader-actions">
+        <button class="btn-primary" onclick="askApexToReply('${m.from_email}', ${JSON.stringify(m.subject || '').replace(/"/g, '&quot;')}, '${(m.message_id || '').replace(/'/g, '')}')">Ask Apex to draft a reply</button>
+      </div>`;
+  } catch (e) {
+    reader.innerHTML = `<div class="evo-empty">Failed: ${escapeHTML(e.message)}</div>`;
+  }
+}
+
+function askApexToReply(toEmail, subject, messageId) {
+  // Hand off to the chat tab with a pre-filled instruction; Apex will stage a draft.
+  const prompt = `Draft a reply to the email from ${toEmail} (subject: "${subject}"). ` +
+    `Use email_draft with in_reply_to "${messageId}" so it threads. Keep it concise.`;
+  document.querySelector('.nav-btn[data-tab="chat"]')?.click();
+  const input = document.getElementById('chat-input');
+  if (input) { input.value = prompt; input.focus(); }
+}
+
+async function sendDraft(id) {
+  if (!confirm('Approve and send this email?')) return;
+  try {
+    const r = await api(`/api/staged-writes/${id}/approve`, { method: 'POST', body: {} });
+    alert(r.result || 'Sent.');
+  } catch (e) { alert('Send failed: ' + e.message); }
+  loadInboxDrafts();
+}
+
+async function discardDraft(id) {
+  try {
+    await api(`/api/staged-writes/${id}/reject`, { method: 'POST', body: {} });
+  } catch (e) { alert('Failed: ' + e.message); }
+  loadInboxDrafts();
+}
+
+document.getElementById('inbox-refresh')?.addEventListener('click', loadInbox);
+document.getElementById('inbox-unread-only')?.addEventListener('change', loadInbox);
+document.getElementById('inbox-triage')?.addEventListener('click', async () => {
+  const btn = document.getElementById('inbox-triage');
+  const report = document.getElementById('inbox-triage-report');
+  btn.textContent = 'Triaging…'; btn.disabled = true;
+  try {
+    const r = await api('/api/email/triage', { method: 'POST', body: { limit: 12, unread_only: true } });
+    report.style.display = 'block';
+    report.textContent = r.report || 'No report.';
+  } catch (e) {
+    report.style.display = 'block';
+    report.textContent = 'Triage failed: ' + e.message;
+  }
+  btn.textContent = 'AI triage unread'; btn.disabled = false;
+});
 
 // ============== TELEMETRY ==============
 let telCostChart = null, telModelChart = null;

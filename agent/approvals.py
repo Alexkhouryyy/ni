@@ -43,6 +43,8 @@ def _summarize(kind: str, payload: dict) -> str:
         return f"note '{payload.get('title')}' in {payload.get('folder', 'Notes')}"
     if kind == "skill":
         return f"skill '{payload.get('name')}': {str(payload.get('description'))[:80]}"
+    if kind == "email":
+        return f"email to {payload.get('to')}: {str(payload.get('subject'))[:80]}"
     return kind
 
 
@@ -110,6 +112,12 @@ def _apply(kind: str, payload: dict) -> str:
             "create", name=payload.get("name"),
             description=payload.get("description"), content=payload.get("content"),
             _bypass_approval=True,
+        )
+    if kind == "email":
+        from tools import email_box
+        return email_box.send(
+            payload["to"], payload.get("subject", ""), payload.get("body", ""),
+            in_reply_to=payload.get("in_reply_to"),
         )
     return f"Unknown staged kind: {kind!r}"
 

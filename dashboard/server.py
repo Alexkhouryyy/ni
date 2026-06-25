@@ -911,6 +911,50 @@ def forged_tools_list():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/email/inbox")
+def email_inbox_endpoint(limit: int = 20, unread_only: bool = False):
+    """Recent inbox messages. Returns {configured, messages}."""
+    try:
+        from tools import email_box
+        if not email_box.is_configured():
+            return {"configured": False, "messages": []}
+        return {"configured": True, "messages": email_box.fetch_inbox(limit=limit, unread_only=unread_only)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/email/message/{uid}")
+def email_message_endpoint(uid: str):
+    try:
+        from tools import email_box
+        return email_box.read_message(uid)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/email/triage")
+async def email_triage_endpoint(request: Request):
+    """Run the email_triage skill and return its text report."""
+    try:
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+        from agent import skills as _skills
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: _skills.run_skill("email_triage", {
+                "limit": int(body.get("limit", 12)),
+                "unread_only": bool(body.get("unread_only", True)),
+            }),
+        )
+        return {"report": result}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/api/evolution")
 def evolution_ledger(days: int = 30):
     """Unified self-improvement ledger: every skill Apex created, refined, or rolled back.
