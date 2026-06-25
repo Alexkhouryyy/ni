@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Apex">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
-<link rel="stylesheet" href="/static/styles.css?v=omni11">
-<link rel="stylesheet" href="/static/mobile.css?v=omni11">
+<link rel="stylesheet" href="/static/styles.css?v=omni12">
+<link rel="stylesheet" href="/static/mobile.css?v=omni12">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -67,6 +67,7 @@
     <button data-tab="selfmod" class="nav-btn"><span class="icon">✎</span>Self-mod</button>
     <button data-tab="phone" class="nav-btn"><span class="icon">☎</span>Phone</button>
     <button data-tab="inbox" class="nav-btn"><span class="icon">✉</span>Inbox</button>
+    <button data-tab="calendar" class="nav-btn"><span class="icon">◷</span>Calendar</button>
     <button data-tab="camera" class="nav-btn"><span class="icon">◉</span>Vision</button>
   </nav>
 
@@ -343,6 +344,26 @@
     </div>
 
     <div id="inbox-reader" class="inbox-reader" style="display:none"></div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section id="tab-calendar" class="tab">
+    <header class="page-head">
+      <h1>Calendar</h1>
+      <div class="page-sub">Your upcoming events. Apex reads these to warn you before meetings.</div>
+    </header>
+    <div class="inbox-toolbar">
+      <button id="cal-refresh" class="btn-primary">Refresh</button>
+      <label class="inbox-filter">Look ahead
+        <select id="cal-range">
+          <option value="1">today</option>
+          <option value="7" selected>7 days</option>
+          <option value="30">30 days</option>
+        </select>
+      </label>
+      <span class="inbox-status" id="cal-status"></span>
+    </div>
+    <div id="cal-list" class="cal-list"><div class="evo-empty">Loading…</div></div>
   </section>
 
   <!-- TELEMETRY -->
@@ -873,9 +894,9 @@
   <button class="ib-no" id="install-no">Not now</button>
 </div>
 
-<script src="/static/app.js?v=omni11"></script>
-<script src="/static/voice-mobile.js?v=omni11"></script>
+<script src="/static/app.js?v=omni12"></script>
+<script src="/static/voice-mobile.js?v=omni12"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
-<script type="module" src="/static/cst3d.js?v=omni11"></script>
+<script type="module" src="/static/cst3d.js?v=omni12"></script>
 </body>
 </html>

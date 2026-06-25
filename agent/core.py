@@ -1133,6 +1133,22 @@ TOOLS = [
             "required": ["to", "subject", "body"],
         },
     },
+    # --- Calendar (read-only CalDAV) ---
+    {
+        "name": "calendar_events",
+        "description": (
+            "List upcoming calendar events from the user's CalDAV calendar. Use when the user asks "
+            "'what's on my calendar', 'what's my day look like', 'am I free Thursday', 'when is my "
+            "next meeting'. Read-only."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days_ahead": {"type": "integer", "description": "How many days forward to look.", "default": 7},
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -1534,6 +1550,14 @@ def _execute_tool(name: str, inputs: dict) -> str:
                 "body": inputs.get("body", ""),
                 "in_reply_to": inputs.get("in_reply_to"),
             })
+
+        # --- Calendar ---
+        elif name == "calendar_events":
+            from tools import calendar_box
+            return json.dumps(
+                calendar_box.upcoming_events(days_ahead=int(inputs.get("days_ahead", 7))),
+                indent=2, default=str,
+            )
 
         else:
             # Try dynamic tools registered via self_mod

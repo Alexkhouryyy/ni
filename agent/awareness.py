@@ -167,25 +167,43 @@ _WEATHER_COOLDOWN = 10800          # 3 hr between weather alerts
 
 
 def _check_meetings(log: "AwarenessLog") -> None:
-    """Emit a proactive event when a scheduled goal deadline is ≤10 min away."""
+    """Emit a proactive event when a meeting or goal deadline is ≤10 min away.
+
+    Pulls from two sources: real CalDAV calendar events (if configured) and active
+    goal deadlines as a fallback. Cooldown-gated so it nudges at most once per window.
+    """
     try:
         import time as _t
         now = _t.time()
         key = "meeting_check"
         if now - _PROACTIVE_COOLDOWNS.get(key, 0) < _MEETING_COOLDOWN:
             return
+
+        # 1. Real calendar events (CalDAV) — the high-value source.
+        try:
+            from tools import calendar_box
+            if calendar_box.is_configured():
+                for ev in calendar_box.imminent_events(within_minutes=int(_MEETING_LOOKAHEAD_SECONDS / 60)):
+                    mins = ev.get("starts_in_min", 0)
+                    where = f" ({ev['location']})" if ev.get("location") else ""
+                    log.add("calendar", f"Meeting in {mins}m: {ev['summary']}{where}")
+                    _PROACTIVE_COOLDOWNS[key] = now
+                    return
+        except Exception:
+            pass
+
+        # 2. Goal deadlines — fallback when no calendar is wired.
+        # NOTE: the goals table stores `deadline` as a REAL unix timestamp.
         from agent import longterm
         with longterm._conn() as c:
             rows = c.execute(
-                "SELECT title, deadline_iso FROM goals WHERE status='active' AND deadline_iso IS NOT NULL"
+                "SELECT title, deadline FROM goals WHERE status='active' AND deadline IS NOT NULL"
             ).fetchall()
-        for title, deadline_iso in rows:
-            if not deadline_iso:
+        for title, deadline_ts in rows:
+            if not deadline_ts:
                 continue
             try:
-                from datetime import datetime
-                dt = datetime.fromisoformat(deadline_iso.replace("Z", "+00:00"))
-                secs_away = dt.timestamp() - now
+                secs_away = float(deadline_ts) - now
                 if 0 < secs_away <= _MEETING_LOOKAHEAD_SECONDS:
                     log.add("calendar", f"Upcoming deadline in {int(secs_away/60)}m: {title}")
                     _PROACTIVE_COOLDOWNS[key] = now

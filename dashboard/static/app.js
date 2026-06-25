@@ -205,6 +205,7 @@ async function loadTab(tab) {
     reflections: loadReflections,
     evolution: loadEvolution,
     inbox: loadInbox,
+    calendar: loadCalendar,
     telemetry: loadTelemetry,
     replay: loadReplay,
     briefing: loadBriefing,
@@ -1081,6 +1082,65 @@ document.getElementById('inbox-triage')?.addEventListener('click', async () => {
   }
   btn.textContent = 'AI triage unread'; btn.disabled = false;
 });
+
+// ============== CALENDAR ==============
+async function loadCalendar() {
+  const list = document.getElementById('cal-list');
+  const status = document.getElementById('cal-status');
+  const days = document.getElementById('cal-range')?.value || 7;
+  if (status) status.textContent = 'Loading…';
+  let data;
+  try {
+    data = await api('/api/calendar/events?days_ahead=' + days);
+  } catch (e) {
+    list.innerHTML = `<div class="evo-empty">Failed: ${escapeHTML(e.message)}</div>`;
+    if (status) status.textContent = '';
+    return;
+  }
+  if (status) status.textContent = '';
+  if (!data.configured) {
+    list.innerHTML = `<div class="evo-empty">Calendar not configured. Add <code>CALDAV_URL</code>,
+      <code>CALDAV_USERNAME</code>, and <code>CALDAV_PASSWORD</code> to your .env, run
+      <code>pip install caldav</code>, and restart Apex.</div>`;
+    return;
+  }
+  const events = data.events || [];
+  if (events[0]?.error) {
+    list.innerHTML = `<div class="evo-empty">${escapeHTML(events[0].error)}</div>`;
+    return;
+  }
+  if (!events.length) {
+    list.innerHTML = `<div class="evo-empty">Nothing scheduled. ✓</div>`;
+    return;
+  }
+  // Group by day.
+  const groups = {};
+  events.forEach(ev => {
+    const d = new Date(ev.start);
+    const key = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    (groups[key] = groups[key] || []).push(ev);
+  });
+  list.innerHTML = Object.entries(groups).map(([day, evs]) => `
+    <div class="cal-day">
+      <div class="cal-day-label">${escapeHTML(day)}</div>
+      ${evs.map(ev => {
+        const start = new Date(ev.start);
+        const time = ev.all_day ? 'all day'
+          : start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        const soon = !ev.all_day && ev.starts_in_min > 0 && ev.starts_in_min <= 60;
+        return `<div class="cal-event ${soon ? 'cal-soon' : ''}">
+          <div class="cal-time">${escapeHTML(time)}</div>
+          <div class="cal-body">
+            <div class="cal-summary">${escapeHTML(ev.summary || '(no title)')}</div>
+            ${ev.location ? `<div class="cal-loc">${escapeHTML(ev.location)}</div>` : ''}
+          </div>
+          ${soon ? `<span class="badge badge-net">in ${ev.starts_in_min}m</span>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+}
+document.getElementById('cal-refresh')?.addEventListener('click', loadCalendar);
+document.getElementById('cal-range')?.addEventListener('change', loadCalendar);
 
 // ============== TELEMETRY ==============
 let telCostChart = null, telModelChart = null;

@@ -955,6 +955,22 @@ async def email_triage_endpoint(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/calendar/events")
+async def calendar_events_endpoint(days_ahead: int = 7):
+    """Upcoming CalDAV events. Returns {configured, events}."""
+    try:
+        from tools import calendar_box
+        if not calendar_box.is_configured():
+            return {"configured": False, "events": []}
+        loop = asyncio.get_event_loop()
+        events = await loop.run_in_executor(
+            None, lambda: calendar_box.upcoming_events(days_ahead=days_ahead)
+        )
+        return {"configured": True, "events": events}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/api/evolution")
 def evolution_ledger(days: int = 30):
     """Unified self-improvement ledger: every skill Apex created, refined, or rolled back.

@@ -242,6 +242,13 @@ EMAIL_IMAP_PORT = int(os.getenv("EMAIL_IMAP_PORT", "993"))
 EMAIL_SMTP_HOST = os.getenv("EMAIL_SMTP_HOST", "")     # blank = auto from address domain
 EMAIL_SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", "587"))
 
+# === Calendar — read-only CalDAV (opt-in; off until configured) ===
+# Works with iCloud, Fastmail, Nextcloud, Google (app password), etc.
+# Requires: pip install caldav
+CALDAV_URL = os.getenv("CALDAV_URL", "")
+CALDAV_USERNAME = os.getenv("CALDAV_USERNAME", "")
+CALDAV_PASSWORD = os.getenv("CALDAV_PASSWORD", "")
+
 # IoT — Home Assistant integration (opt-in, off by default)
 IOT_ENABLED = os.getenv("IOT_ENABLED", "false").lower() in {"1", "true", "yes"}
 IOT_HA_URL = os.getenv("IOT_HA_URL", "")          # e.g. http://homeassistant.local:8123

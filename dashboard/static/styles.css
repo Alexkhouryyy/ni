@@ -2021,3 +2021,13 @@ pre.md-pre code { background: none; border: none; padding: 0; }
 .inbox-reader-meta { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
 .inbox-reader-body { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.55; color: var(--text-mute); max-height: 420px; overflow-y: auto; font-family: inherit; margin: 0; }
 .inbox-reader-actions { margin-top: 14px; }
+
+/* ============== CALENDAR ============== */
+.cal-list { display: flex; flex-direction: column; gap: 18px; }
+.cal-day-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); font-weight: 600; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+.cal-event { display: grid; grid-template-columns: 78px 1fr auto; align-items: center; gap: 12px; padding: 9px 10px; border-radius: var(--radius-sm); transition: background 0.15s ease; }
+.cal-event:hover { background: var(--bg-3); }
+.cal-soon { background: rgba(255,181,71,0.08); border-left: 3px solid var(--warn); }
+.cal-time { font-size: 12.5px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+.cal-summary { font-size: 13.5px; color: var(--text); }
+.cal-loc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
