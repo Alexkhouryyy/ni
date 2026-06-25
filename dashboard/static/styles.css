@@ -424,9 +424,11 @@ label.checkbox { color: var(--text-mute); font-size: 12.5px; display: flex; alig
 .hud { position: absolute; z-index: 5; width: 208px; }
 .hud-tl { top: 92px;  left: 34px; }
 .hud-tr { top: 92px;  right: 34px; }
-.hud-bl { bottom: 86px; left: 34px; }
+.hud-bl { bottom: 86px; left: 34px; display: flex; flex-direction: column-reverse; gap: 10px; }
 .hud-br { bottom: 86px; right: 34px; }
 .hud-tr .hud-frame, .hud-br .hud-frame { text-align: right; }
+.hud-clickable { cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+.hud-clickable:hover { border-color: var(--accent); box-shadow: 0 0 14px rgba(102,204,255,0.22); }
 .hud-frame {
   position: relative;
   background: linear-gradient(160deg, rgba(16,24,42,0.92), rgba(7,11,20,0.88));

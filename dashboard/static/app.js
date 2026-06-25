@@ -485,6 +485,9 @@ async function loadCommand() {
     initGlobe();
     renderPlanetSelector();
     startCmdClock();
+    document.getElementById('hud-evo-frame')?.addEventListener('click', () => {
+      document.querySelector('.nav-btn[data-tab="evolution"]')?.click();
+    });
     const _qaStrip = document.getElementById('cst-quickask');
     if (_qaStrip) {
       _qaStrip.addEventListener('submit', e => {
@@ -531,6 +534,18 @@ async function loadCommand() {
     setBadge('reflections', refl.length);
     setBadge('tasks', tasks.length);
     setBadge('subagents', runningSubs);
+
+    // Evolution glance — self-improvement at a glance (non-blocking)
+    api('/api/evolution?days=30').then(evo => {
+      const s = evo.summary || {};
+      const improvements = (s.created || 0) + (s.refined || 0);
+      const big = document.getElementById('hud-evo');
+      if (big) big.textContent = improvements;
+      const meta = document.getElementById('hud-evo-meta');
+      if (meta) meta.textContent =
+        `✦${s.created || 0} forged · ↻${s.refined || 0} refined · ⤺${s.rolled_back || 0} reverted` +
+        ((s.failing_now || 0) > 0 ? ` · ${s.failing_now} failing` : '');
+    }).catch(() => {});
   } catch (e) { console.error('command', e); }
 }
 

@@ -123,6 +123,17 @@ def _do_rollback(rewrite_id: int, name: str, old_source: str, reason: str, skill
             "WHERE id = ?",
             (time.time(), reason, rewrite_id),
         )
+    # Tell the user a self-rewrite was reverted — this is a safety event worth knowing.
+    try:
+        from agent import notify as _notify
+        _notify.notify(
+            "Apex rolled back a skill",
+            f"Reverted “{name}” — {reason}.",
+            kind="evolution", priority="high", url="/?tab=evolution",
+            dedup_key=f"evo-rollback-{rewrite_id}",
+        )
+    except Exception as e:
+        print(f"[Rollback] notify failed: {e}")
 
 
 def list_rewrites(days: int = 30) -> list[dict]:

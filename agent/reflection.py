@@ -317,6 +317,18 @@ def refine_skills(client, hours: int = 24) -> dict:
         print(f"[Reflection] refined skill {name!r}: {result}")
         if "created and loaded" in result:
             refined += 1
+            # Surface the self-improvement to the user across all devices.
+            try:
+                from agent import notify as _notify
+                _notify.notify(
+                    "Apex refined a skill",
+                    f"Rewrote “{name}” after {cand['failures']} recent failures. "
+                    f"It will auto-roll-back if approval drops.",
+                    kind="evolution", url="/?tab=evolution",
+                    dedup_key=f"evo-refine-{name}",
+                )
+            except Exception as _e:
+                print(f"[Reflection] refine notify failed: {_e}")
     return {"candidates": len(candidates), "refined": refined}
 
 
