@@ -178,15 +178,38 @@ def run_resident(model_override: Optional[str] = None) -> None:
     # Resident-mode greeting policy: never speak on boot
     logging.info(f"Silent boot: {config.RESIDENT_SILENT_BOOT}")
 
+    # Jarvis: me.md profile digest background loop
+    try:
+        reflection.start_profile_digest_loop(agent.anthropic)
+        logging.info("Profile digest loop started.")
+    except Exception as e:
+        logging.warning(f"Profile digest loop skipped: {e}")
+
     # Dashboard (background thread, optional)
+    _dashboard_url = f"http://{config.DASHBOARD_HOST}:{config.DASHBOARD_PORT}"
     if getattr(config, "DASHBOARD_ENABLED", True):
         try:
             from dashboard import server as dash
             dash.set_agent(agent, awareness_log=None)
             dash.start_in_background(port=getattr(config, "DASHBOARD_PORT", 7860))
-            logging.info(f"Dashboard: http://{config.DASHBOARD_HOST}:{config.DASHBOARD_PORT}")
+            logging.info(f"Dashboard: {_dashboard_url}")
         except Exception as e:
             logging.error(f"Dashboard failed to start: {e}")
+
+    # Jarvis: desktop orb (opt-in via ORB_ENABLED=true in .env)
+    if getattr(config, "ORB_ENABLED", False):
+        try:
+            from app.orb import run_orb
+            hotkey = getattr(config, "DESKTOP_SHELL_HOTKEY", "<ctrl>+<shift>+\\")
+            threading.Thread(
+                target=run_orb,
+                kwargs={"dashboard_url": _dashboard_url, "hotkey": hotkey},
+                daemon=True,
+                name="ApexOrb",
+            ).start()
+            logging.info(f"Desktop orb launched (hotkey: {hotkey})")
+        except Exception as e:
+            logging.warning(f"Orb failed to start: {e}")
 
     # Wire messaging channels to the agent so inbound webhooks (WhatsApp, Telegram,
     # SMS, etc.) actually reach Apex in always-on mode. Without this, the dashboard

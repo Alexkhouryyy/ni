@@ -1066,6 +1066,28 @@ TOOLS = [
             "required": ["question"],
         },
     },
+    # --- Jarvis: screen vision ---
+    {
+        "name": "describe_screen",
+        "description": (
+            "Capture the screen and ask Claude vision to describe what's on it. "
+            "Modes: 'general' (what's on screen), 'coding' (pair-programmer: find errors/suggestions), "
+            "'context' (one-line summary). Use when the user asks 'what's on my screen', "
+            "'can you see what I'm working on', or for ambient context in coding sessions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["general", "coding", "context"],
+                    "default": "general",
+                    "description": "general: describe scene. coding: spot errors. context: one-line summary.",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -1441,6 +1463,11 @@ def _execute_tool(name: str, inputs: dict) -> str:
                 "takes": result.takes,
             }, indent=2)
 
+        # --- Jarvis: screen vision ---
+        elif name == "describe_screen":
+            from tools import screen_vision as _sv
+            return _sv.describe_screen(inputs.get("mode", "general"))
+
         else:
             # Try dynamic tools registered via self_mod
             dyn_result = self_mod.dispatch(name, inputs)
@@ -1628,9 +1655,16 @@ class AgentCore:
         return cached + self._mcp_tools + self_mod.get_dynamic_tools()
 
     def _effective_system_prompt(self) -> list[dict]:
-        blocks: list[dict] = [
-            {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
-        ]
+        blocks: list[dict] = []
+        # Jarvis persona — prepended so character rules take highest priority
+        try:
+            from agent.persona import get_persona_prefix
+            persona = get_persona_prefix()
+            if persona:
+                blocks.append({"type": "text", "text": persona})
+        except Exception:
+            pass
+        blocks.append({"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}})
         goals_str = goals.active_goals_for_prompt()
         if goals_str:
             blocks.append({"type": "text", "text": goals_str})
@@ -1655,6 +1689,14 @@ class AgentCore:
                 f"{usr or '(empty)'}\n"
             )
             blocks.append({"type": "text", "text": memory_block})
+        # App-aware context profile (foreground app detection) — appended last so it's fresh per turn
+        try:
+            from agent.app_context import get_context_block
+            ctx = get_context_block()
+            if ctx:
+                blocks.append({"type": "text", "text": ctx})
+        except Exception:
+            pass
         # Markdown procedural skills — names/descriptions only (content loaded lazily via skill_manage view)
         try:
             from agent import skill_md as _skill_md

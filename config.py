@@ -224,6 +224,15 @@ NOTIFY_DEDUP_SECONDS = int(os.getenv("NOTIFY_DEDUP_SECONDS", "30"))
 # URLs, the PWA start_url, and QR pairing. Empty = local/LAN only.
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
 
+# === Jarvis integration — personality, PC control, app profiles, screen vision, orb ===
+JARVIS_PERSONA_ENABLED = os.getenv("JARVIS_PERSONA_ENABLED", "true").lower() in {"1", "true", "yes"}
+APP_CONTEXT_ENABLED = os.getenv("APP_CONTEXT_ENABLED", "true").lower() in {"1", "true", "yes"}
+SCREEN_HOTKEY = os.getenv("SCREEN_HOTKEY", "")           # e.g. "<ctrl>+<shift>+s"
+DESKTOP_SHELL_HOTKEY = os.getenv("DESKTOP_SHELL_HOTKEY", "<ctrl>+<shift>+\\")
+ORB_ENABLED = os.getenv("ORB_ENABLED", "false").lower() in {"1", "true", "yes"}
+PROFILE_DIGEST_ENABLED = os.getenv("PROFILE_DIGEST_ENABLED", "true").lower() in {"1", "true", "yes"}
+PROFILE_DIGEST_INTERVAL_SECONDS = int(os.getenv("PROFILE_DIGEST_INTERVAL_SECONDS", "3600"))
+
 # IoT — Home Assistant integration (opt-in, off by default)
 IOT_ENABLED = os.getenv("IOT_ENABLED", "false").lower() in {"1", "true", "yes"}
 IOT_HA_URL = os.getenv("IOT_HA_URL", "")          # e.g. http://homeassistant.local:8123

@@ -87,6 +87,14 @@ def main():
     if memories:
         agent.memory.summary = longterm.format_for_context(memories)
 
+    # Jarvis: me.md profile digest background loop
+    try:
+        from agent import reflection as _reflection
+        _reflection.start_profile_digest_loop(agent.anthropic)
+        print("[Reflection] Profile digest loop started.")
+    except Exception as _e:
+        print(f"[Reflection] Profile digest loop skipped: {_e}")
+
     # MCP tool discovery (non-blocking — happens in background)
     import threading
     def _load_mcp():

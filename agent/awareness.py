@@ -159,6 +159,69 @@ class FileWatcher(threading.Thread):
             time.sleep(1)
 
 
+_PROACTIVE_COOLDOWNS: dict[str, float] = {}  # trigger_key → last_fired timestamp
+
+_MEETING_LOOKAHEAD_SECONDS = 600   # warn when a goal/meeting is ≤10 min away
+_MEETING_COOLDOWN = 1800           # 30 min between meeting warnings
+_WEATHER_COOLDOWN = 10800          # 3 hr between weather alerts
+
+
+def _check_meetings(log: "AwarenessLog") -> None:
+    """Emit a proactive event when a scheduled goal deadline is ≤10 min away."""
+    try:
+        import time as _t
+        now = _t.time()
+        key = "meeting_check"
+        if now - _PROACTIVE_COOLDOWNS.get(key, 0) < _MEETING_COOLDOWN:
+            return
+        from agent import longterm
+        with longterm._conn() as c:
+            rows = c.execute(
+                "SELECT title, deadline_iso FROM goals WHERE status='active' AND deadline_iso IS NOT NULL"
+            ).fetchall()
+        for title, deadline_iso in rows:
+            if not deadline_iso:
+                continue
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(deadline_iso.replace("Z", "+00:00"))
+                secs_away = dt.timestamp() - now
+                if 0 < secs_away <= _MEETING_LOOKAHEAD_SECONDS:
+                    log.add("calendar", f"Upcoming deadline in {int(secs_away/60)}m: {title}")
+                    _PROACTIVE_COOLDOWNS[key] = now
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+def _check_weather(log: "AwarenessLog") -> None:
+    """Emit a weather alert if WEATHER_API_KEY is set and conditions changed."""
+    try:
+        import os, time as _t
+        key = "weather_check"
+        now = _t.time()
+        if now - _PROACTIVE_COOLDOWNS.get(key, 0) < _WEATHER_COOLDOWN:
+            return
+        api_key = os.environ.get("WEATHER_API_KEY", "")
+        city = os.environ.get("WEATHER_CITY", "")
+        if not api_key or not city:
+            return
+        import urllib.request, json as _json, ssl
+        url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(url, timeout=5, context=ctx) as r:
+            data = _json.loads(r.read())
+        desc = data.get("weather", [{}])[0].get("description", "")
+        temp = data.get("main", {}).get("temp", "")
+        if desc:
+            log.add("weather", f"{city}: {desc}, {temp}°C")
+            _PROACTIVE_COOLDOWNS[key] = now
+    except Exception:
+        pass
+
+
 class AwarenessMonitor:
     """Coordinates watchers and triggers proactive speech-up when warranted."""
 
@@ -226,6 +289,10 @@ class AwarenessMonitor:
         while not self._stop.wait(timeout=guardian_interval):
             now = time.time()
             events = self.log.recent(since_seconds=self.review_interval * 1.5)
+
+            # Jarvis: calendar deadline warnings + optional weather alerts
+            _check_meetings(self.log)
+            _check_weather(self.log)
 
             # Guardian Angel — high-priority decision-moment detection
             if self.guardian is not None and now - _last_guardian >= guardian_interval:
