@@ -911,6 +911,98 @@ def forged_tools_list():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/evolution")
+def evolution_ledger(days: int = 30):
+    """Unified self-improvement ledger: every skill Apex created, refined, or rolled back.
+
+    Aggregates three streams into one reverse-chronological timeline so the user can
+    watch Apex compound over time:
+      - forged/created skills  (skill_forge.forged_tools)
+      - refinements + rollbacks (skill_rewrites via rollback.list_rewrites)
+      - currently-failing skills queued for the next nightly refine pass
+    """
+    try:
+        from agent import skills as _skills
+        from agent import skill_forge as _forge
+
+        events: list[dict] = []
+
+        # Rewrites: each is a 'refined' event; rolled_back ones also emit a 'rolled_back' event.
+        rewrites = rollback_mod.list_rewrites(days=days)
+        for r in rewrites:
+            events.append({
+                "ts": r.get("ts"),
+                "kind": "refined",
+                "name": r.get("name"),
+                "trigger": r.get("trigger"),
+                "delta": r.get("delta"),
+                "status": r.get("status"),
+                "detail": (
+                    f"approval {_pct(r.get('pre_approval_rate'))} → {_pct(r.get('post_approval_rate'))}"
+                    if r.get("post_approval_rate") is not None else
+                    f"rewritten ({r.get('trigger') or 'manual'})"
+                ),
+            })
+            if r.get("status") == "rolled_back":
+                events.append({
+                    "ts": r.get("rollback_ts") or r.get("ts"),
+                    "kind": "rolled_back",
+                    "name": r.get("name"),
+                    "trigger": r.get("trigger"),
+                    "delta": r.get("delta"),
+                    "status": "rolled_back",
+                    "detail": r.get("rollback_reason") or "reverted — rewrite hurt approval rate",
+                })
+
+        # Forged/created skills.
+        cutoff = time.time() - days * 86400
+        for t in _forge.list_forged():
+            created = t.get("created_at") or 0
+            if created < cutoff:
+                continue
+            events.append({
+                "ts": created,
+                "kind": "created",
+                "name": t.get("name"),
+                "trigger": "forge",
+                "status": t.get("status"),
+                "needs_network": t.get("needs_network"),
+                "detail": t.get("description") or "new skill forged",
+            })
+
+        events.sort(key=lambda e: e.get("ts") or 0, reverse=True)
+
+        # Failing skills queued for the next nightly refine pass.
+        failing = _skills.failure_stats(hours=days * 24, min_failures=3)
+
+        installed = _skills.list_skills()
+        refined_n = sum(1 for e in events if e["kind"] == "refined")
+        created_n = sum(1 for e in events if e["kind"] == "created")
+        rolled_n = sum(1 for e in events if e["kind"] == "rolled_back")
+
+        return {
+            "summary": {
+                "installed": len(installed),
+                "created": created_n,
+                "refined": refined_n,
+                "rolled_back": rolled_n,
+                "failing_now": len(failing),
+                "window_days": days,
+            },
+            "events": events[:200],
+            "failing": failing,
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+def _pct(rate) -> str:
+    try:
+        return f"{rate * 100:.0f}%" if rate is not None else "n/a"
+    except Exception:
+        return "n/a"
+
+
 @app.post("/api/forged-tools/{tool_id}/approve")
 def forged_tools_approve(tool_id: int):
     try:

@@ -176,6 +176,9 @@ function connectWS() {
     if (msg.type === 'rollback_done' && document.getElementById('tab-reflections')?.classList.contains('active')) {
       loadReflections();
     }
+    if (msg.type === 'rollback_done' && document.getElementById('tab-evolution')?.classList.contains('active')) {
+      loadEvolution();
+    }
   };
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 25000);
 }
@@ -200,6 +203,7 @@ async function loadTab(tab) {
     memory: loadMemory,
     graph: loadGraph,
     reflections: loadReflections,
+    evolution: loadEvolution,
     telemetry: loadTelemetry,
     replay: loadReplay,
     briefing: loadBriefing,
@@ -858,6 +862,80 @@ document.getElementById('refl-check-rollback')?.addEventListener('click', async 
   btn.textContent = 'Check rollbacks now'; btn.disabled = false;
   loadReflections();
 });
+
+// ============== EVOLUTION ==============
+const _EVO_META = {
+  created:     { icon: '✦', cls: 'evo-created',  verb: 'Forged' },
+  refined:     { icon: '↻', cls: 'evo-refined',  verb: 'Refined' },
+  rolled_back: { icon: '⤺', cls: 'evo-rolled',   verb: 'Rolled back' },
+};
+
+async function loadEvolution() {
+  let data;
+  try {
+    data = await api('/api/evolution?days=30');
+  } catch (e) {
+    document.getElementById('evo-timeline').innerHTML =
+      `<div class="evo-empty">Failed to load: ${escapeHTML(e.message)}</div>`;
+    return;
+  }
+  const s = data.summary || {};
+  const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v ?? '—'; };
+  setText('evo-installed', s.installed);
+  setText('evo-created', s.created);
+  setText('evo-refined', s.refined);
+  setText('evo-rolled', s.rolled_back);
+  setText('evo-failing', s.failing_now);
+  const rolledEl = document.getElementById('evo-rolled');
+  if (rolledEl) rolledEl.className = 'stat-value ' + ((s.rolled_back || 0) > 0 ? 'val-warn' : '');
+  const failEl = document.getElementById('evo-failing');
+  if (failEl) failEl.className = 'stat-value ' + ((s.failing_now || 0) > 0 ? 'val-bad' : 'val-good');
+  const win = document.getElementById('evo-window');
+  if (win) win.textContent = `last ${s.window_days || 30} days`;
+
+  // Timeline
+  const tl = document.getElementById('evo-timeline');
+  const events = data.events || [];
+  if (!events.length) {
+    tl.innerHTML = `<div class="evo-empty">No changes yet. Apex refines failing skills nightly at 3am — the ledger fills as it learns.</div>`;
+  } else {
+    tl.innerHTML = events.map(ev => {
+      const m = _EVO_META[ev.kind] || { icon: '•', cls: '', verb: ev.kind };
+      let delta = '';
+      if (ev.delta != null) {
+        const cls = ev.delta > 0 ? 'delta-good' : ev.delta < 0 ? 'delta-bad' : 'delta-neutral';
+        const sign = ev.delta > 0 ? '+' : '';
+        delta = `<span class="delta-badge ${cls}">${sign}${(ev.delta * 100).toFixed(0)}%</span>`;
+      }
+      const net = ev.needs_network ? '<span class="badge badge-net">network</span>' : '';
+      return `<div class="evo-event ${m.cls}">
+        <div class="evo-dot">${m.icon}</div>
+        <div class="evo-body">
+          <div class="evo-line"><span class="evo-verb">${m.verb}</span>
+            <code>${escapeHTML(ev.name || '?')}</code>${delta}${net}</div>
+          <div class="evo-detail">${escapeHTML(ev.detail || '')}</div>
+        </div>
+        <div class="evo-ts">${fmtDate(ev.ts)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Failing / workbench
+  const fl = document.getElementById('evo-failing-list');
+  const failing = data.failing || [];
+  if (!failing.length) {
+    fl.innerHTML = `<div class="evo-empty">Nothing failing — all skills healthy. ✓</div>`;
+  } else {
+    fl.innerHTML = failing.map(f => {
+      const errs = (f.errors || []).slice(0, 2).map(e => escapeHTML(e)).join(' · ');
+      return `<div class="evo-fail">
+        <div class="evo-fail-head"><code>${escapeHTML(f.name)}</code>
+          <span class="badge badge-bad">${f.failures}/${f.total} failed</span></div>
+        ${errs ? `<div class="evo-fail-err">${errs}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+}
 
 // ============== TELEMETRY ==============
 let telCostChart = null, telModelChart = null;

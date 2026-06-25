@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Apex">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
-<link rel="stylesheet" href="/static/styles.css?v=omni8">
-<link rel="stylesheet" href="/static/mobile.css?v=omni8">
+<link rel="stylesheet" href="/static/styles.css?v=omni9">
+<link rel="stylesheet" href="/static/mobile.css?v=omni9">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -51,6 +51,7 @@
     <button data-tab="memory" class="nav-btn"><span class="icon">◎</span>Memory</button>
     <button data-tab="graph" class="nav-btn"><span class="icon">◈</span>Knowledge graph</button>
     <button data-tab="reflections" class="nav-btn"><span class="icon">⌘</span>Reflections</button>
+    <button data-tab="evolution" class="nav-btn"><span class="icon">✦</span>Evolution</button>
 
     <div class="nav-group-label">Observability</div>
     <button data-tab="telemetry" class="nav-btn"><span class="icon">▤</span>Telemetry</button>
@@ -258,6 +259,53 @@
         </div>
       </div>
       <div id="rewrites-list"></div>
+    </div>
+  </section>
+
+  <!-- EVOLUTION -->
+  <section id="tab-evolution" class="tab">
+    <header class="page-head">
+      <h1>Evolution</h1>
+      <div class="page-sub">The self-improvement ledger — every skill Apex has created, refined, or rolled back</div>
+    </header>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Skills installed</div>
+        <div class="stat-value" id="evo-installed">—</div>
+        <div class="stat-meta">live capability count</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Created (30d)</div>
+        <div class="stat-value val-good" id="evo-created">—</div>
+        <div class="stat-meta">forged by the agent</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Refined (30d)</div>
+        <div class="stat-value" id="evo-refined">—</div>
+        <div class="stat-meta">rewritten to improve</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Rolled back (30d)</div>
+        <div class="stat-value" id="evo-rolled">—</div>
+        <div class="stat-meta">auto-reverted regressions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Failing now</div>
+        <div class="stat-value" id="evo-failing">—</div>
+        <div class="stat-meta">queued for nightly refine</div>
+      </div>
+    </div>
+
+    <div class="evo-grid">
+      <div class="panel">
+        <div class="panel-head"><h2>Improvement timeline</h2><span class="panel-sub" id="evo-window">last 30 days</span></div>
+        <div id="evo-timeline" class="evo-timeline"><div class="evo-empty">Loading…</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>On the workbench</h2><span class="panel-sub">skills the next 3am pass will rewrite</span></div>
+        <div id="evo-failing-list" class="evo-failing"><div class="evo-empty">Nothing failing — all skills healthy.</div></div>
+      </div>
     </div>
   </section>
 
@@ -789,9 +837,9 @@
   <button class="ib-no" id="install-no">Not now</button>
 </div>
 
-<script src="/static/app.js?v=omni8"></script>
-<script src="/static/voice-mobile.js?v=omni8"></script>
+<script src="/static/app.js?v=omni9"></script>
+<script src="/static/voice-mobile.js?v=omni9"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
-<script type="module" src="/static/cst3d.js?v=omni8"></script>
+<script type="module" src="/static/cst3d.js?v=omni9"></script>
 </body>
 </html>
