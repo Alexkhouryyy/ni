@@ -1,296 +1,121 @@
-# OpenClaw × Apex — Decision Report & Weighted Matrix
+# OpenClaw × Apex — Decision Report (v2, autonomy-weighted, evidence-based)
 
-_Analysis date: 2026-06-26 · Subject: openclaw/openclaw vs Apex_
+_Analysis date: 2026-06-26 · Subject: openclaw/openclaw vs Apex · Lens: "Apex must work without the user being there"_
+
+> **This is a full rewrite of v1.** v1 was written from architectural assumptions and got three verdicts wrong. v2 is grounded in a code-level audit of Apex's actual autonomous infrastructure (4 parallel auditor agents + direct file verification). Where v1 said "PORT daemon mode" and "PORT off-device execution," the audit proved **Apex already ships both** — and surfaced three real latent bugs that matter far more than any OpenClaw feature.
 
 ---
 
 ## Executive Summary
 
-**Verdict: SELECTIVE INTEGRATION — 4 capabilities are genuine must-ports, 3 are worth building, 5 are defer/skip.**
+**Verdict: PORT exactly ONE OpenClaw capability (sandboxed execution). Build two more later. Everything else autonomy-related, Apex already has — but three bugs are quietly breaking it.**
 
-OpenClaw is neither a twin (like Hermes) nor a soul donor (like Jarvis). It is a **messaging-first, channel-native AI platform** — designed around the idea that the agent should live wherever the user already communicates: iMessage, Matrix, IRC, LINE, Mattermost, Microsoft Teams, Google Chat, Feishu, and more. Apex was designed around a different north star: a single intelligent agent with deep memory, self-improvement, and real capability — accessible via voice, dashboard, and Telegram.
+The "works without you there" lens does not point at OpenClaw. It points back at Apex's own code. Apex already has a $0 always-on deployment that is *better* than OpenClaw's laptop daemon: an Oracle Cloud free-tier VM running `main.py --text` under systemd with `Restart=always`, reachable from your phone with the laptop off. The honest finding is not "Apex is missing autonomy" — it's "**Apex's autonomy is built but partially disconnected, and the gaps are bugs, not missing features.**"
 
-Those two philosophies are not in conflict. They address different surfaces. The result: OpenClaw has **4 genuinely net-new capabilities** Apex simply does not have, and **3 more** where Apex's version exists but OpenClaw's is materially better. The rest — native apps, live canvas, full plugin SDK — are enormous efforts with unclear payoff relative to what Apex already covers via PWA and skill_forge.
-
-The critical architectural warning: **OpenClaw is TypeScript/Node.js**. Every integration is a from-scratch Python reimplementation — not a code port. That adds 25–40% effort to every item in the matrix. It is the single biggest weighing factor across all decisions.
+| What v1 claimed | What the audit proved |
+|---|---|
+| PORT daemon mode (score 9.0) | **Already shipped** — `scripts/apex.service`, `Restart=always`, `systemctl enable`, boot-start, headless |
+| PORT off-device execution (8.0) | **Already shipped** — Oracle Cloud free VM + Tailscale + Cloudflare tunnel + hybrid mode (`docs/OMNIPRESENCE.md`, `scripts/setup-oracle-cloud.md`) |
+| (not assessed) session handoff | **Already shipped** — omnipresence model: one SQLite brain, every device a window into it |
+| PORT sandboxed execution (9.25) | **Confirmed — still the one true port (8.40)** |
 
 ---
 
-## 1. Why This Is Hard to Compare — Architecture Gap
+## 1. What "works without you there" actually requires — and where Apex stands
 
-| Dimension | Apex | OpenClaw |
+| Requirement | Apex status | Evidence |
 |---|---|---|
-| Language | Python 3.11 | TypeScript / Node.js |
-| Memory | SQLite + semantic embeddings + FTS5 | Per-workspace JSON + vector (Pinecone optional) |
-| Channels | Telegram, Discord, Slack, WhatsApp, Signal, dashboard | 15+ (iMessage, IRC, Teams, Matrix, Feishu, LINE, Mattermost, Google Chat, + above) |
-| Skill system | `skill_forge.py` — AI-generated, approval-gated, auto-rollback | Plugin SDK (`packages/`) — npm-installable, third-party |
-| Execution | `subprocess(shell=True)` directly on host | Local (DMs), Docker/SSH sandbox (group/channel) |
-| Frontend | Dashboard PWA + Three.js constellation | Native macOS/iOS/Android + desktop electron shell |
-| Self-improvement | Closed loop — reflection + forge + rollback | None — static skills only |
-| Voice | Whisper STT + wake word + `--resident` | Wake word (macOS/iOS), continuous (Android) |
-| Memory sharing | Per-session + longterm DB (all channels) | Fully isolated per-agent workspace (by channel/account) |
-| Persona | Jarvis persona (Phase 1) | Configurable per-channel personas |
-| Code | ~12,000 lines Python | ~18,000 lines TypeScript (monorepo) |
+| Runs when laptop is closed/off | ✅ Oracle Cloud free VM (Ampere A1, 2 OCPU/12GB, free forever) | `scripts/setup-oracle-cloud.md`, `scripts/bootstrap-oracle.sh` |
+| Starts on boot, no GUI login | ✅ systemd `WantedBy=multi-user.target` + `systemctl enable` | `scripts/apex.service:20`, `bootstrap-oracle.sh:132` |
+| Auto-restarts on crash | ✅ systemd `Restart=always` / `RestartSec=10` | `scripts/apex.service:12-13` |
+| Autonomous decision loop runs unattended | ⚠️ **Only on cloud (`--text`), NOT on laptop (`--resident`)** | `main.py:239-310,384` vs `app/resident.py` (no cortex) |
+| Reachable from phone while away | ✅ Tailscale (private) + Cloudflare tunnel (public) | `docs/OMNIPRESENCE.md §3` |
+| Proactive outreach when away | ✅ Web Push (VAPID) → all devices; Telegram fallback | `agent/notify.py:140-205` |
+| Same context across devices | ✅ Omnipresence: one server brain = one SQLite DB | `docs/OMNIPRESENCE.md` |
+| Scheduled tasks survive restart | ⚠️ **Schedule definition survives; missed fires are lost** | `agent/scheduler.py` (in-memory jobstore) |
+| Unattended actions are safe | ❌ **No sandbox; cortex auto-runs `run_python` on host** | `agent/cortex.py:131-138` |
+| Staged risky actions can be approved+run | ❌ **Approval path can't execute `bash`/`write_file`/`send_email`** | `agent/cortex.py:117-142` |
 
-The architectural gap means: **everything worth taking from OpenClaw must be rebuilt in Python**. This is not a port from a compatible language — it is reading OpenClaw for the idea, then writing that idea from scratch in Apex's stack.
-
----
-
-## 2. Full Capability Audit
-
-| OpenClaw Capability | Module(s) | Apex Equivalent | Overlap % |
-|---|---|---|---|
-| 15+ messaging channels (iMessage, IRC, Teams, Matrix, Feishu, LINE, Mattermost, Google Chat) | `packages/adapters/*` | Telegram/Discord/Slack/WA/Signal only | 25% |
-| Per-channel isolated agent workspaces | `core/WorkspaceManager` | Per-channel Memory isolation in longterm.py | 40% |
-| Docker/SSH sandboxed execution | `execution/DockerBackend`, `SshBackend` | None — bare subprocess on host | 5% |
-| ClawHub skill marketplace (shareable, discoverable) | `packages/clawhub/*` | Local skill_forge only — no sharing | 0% |
-| Live Canvas (agent-driven visual workspace) | `packages/canvas/*` | None | 0% |
-| Per-channel configurable personas | `config/personas.yaml` | Single Jarvis persona (config flag) | 15% |
-| Onboarding wizard (`openclaw onboard`) | `cli/onboard.ts` | None — manual env setup | 0% |
-| Native macOS/iOS/Android apps | `apps/macos`, `apps/ios`, `apps/android` | Dashboard PWA | 20% |
-| Daemon mode (launchd/systemd user service) | `cli/daemon.ts` | `--resident` mode | 60% |
-| Plugin SDK (`packages/`) | `sdk/plugin.ts` | skill_forge (different model) | 20% |
-| Model failover / provider rotation | `core/ModelRouter` | `provider.py` + `resilience.py` | 75% |
-| Multi-agent routing (by account/channel) | `core/AgentRouter` | Single agent instance (multi-channel) | 35% |
-| Wake word voice mode | `packages/voice/*` | `--wakeword` mode (Porcupine) | 70% |
-| Continuous voice (Android) | `apps/android/voice` | Partial — push-to-talk only on mobile | 30% |
-| Session handoff across devices | `core/SessionSync` | None | 0% |
+Seven of ten are solved. The three that aren't are **bugs in existing code**, plus one genuine missing capability (sandbox) that OpenClaw teaches.
 
 ---
 
-## 3. Weighted Decision Matrix
+## 2. The three bugs the audit found (higher priority than any port)
 
-**Weights:** Net-new value 30% · Strategic fit 25% · Low effort 15% · Low risk 15% · Low redundancy 15%
-**Scale:** 1 = worst, 10 = best (Low effort 10 = trivially easy; Low risk 10 = zero risk; Low redundancy 10 = zero overlap)
-**Note:** All effort scores penalised vs a Python-native project because OpenClaw is TypeScript — every feature is a ground-up reimplementation.
+### BUG 1 — The autonomous cortex doesn't run in `--resident`/laptop-autostart mode
 
-| Capability | Net-new | Fit | Effort | Risk | Redund. | **Score** | Decision |
+The cortex OODA loop (`agent/cortex.py:tick`) has exactly **one caller**: `AwarenessMonitor._review_loop` (`awareness.py:341`). That monitor is built and started **only** in the `main.py` flow (`main.py:239-310`, `monitor.start()` at `:384`). `app/resident.py` — the target of laptop login-autostart (`app/autostart.py` execs `main.py --resident`) — never imports `AwarenessMonitor`, never sets `monitor.cortex`, and explicitly passes `awareness_log=None` to the dashboard (`resident.py:193`).
+
+**Consequence:** if you rely on laptop autostart, you get the scheduler, channels, and dashboard — but the autonomous cortex, world-model rebuild, Guardian Angel, and Time Capsule **never tick**. The cloud VM (which runs `--text`) is fine; the laptop resident path is silently half-awake.
+
+**Fix (~20 lines):** have `resident.py` build and start an `AwarenessMonitor` with `cortex` + `world_model_client` wired, exactly as `main.py:267-310` does — or unify the two entry points so there is one startup path.
+
+### BUG 2 — APScheduler uses an in-memory jobstore; missed fires are lost forever
+
+`agent/scheduler.py` creates a `BackgroundScheduler` with the default `MemoryJobStore` — no `SQLAlchemyJobStore`, no `misfire_grace_time`, no `coalesce`. The `scheduled_tasks` SQLite table is only the agent's own re-registration list, replayed at boot by `_restore_tasks()`. So "survives restart" means *the schedule definition* survives — **not** that a run due during downtime is caught up. A `date` task whose time passed while the VM rebooted is gone; cron/interval silently resume at the next future occurrence.
+
+**Fix:** add a `SQLAlchemyJobStore` pointing at the longterm DB and set `misfire_grace_time` + `coalesce=True` so downtime-missed fires execute on restart. This is the difference between "scheduled" and "reliably scheduled" for an always-on agent.
+
+### BUG 3 — The approval path can't execute the dangerous tools it stages
+
+`cortex.approve_action` re-runs `_execute_tool`, which only implements the read-only `always` tools (`cortex.py:117-142`). For a staged `confirm`-tier tool — `write_file`, `bash`, `send_email`, `sms_send` — there is no executor branch, so approving it returns `"[cortex] no executor for ..."` **and does nothing.** Apex correctly stages dangerous autonomous actions and pushes you a notification — but if you tap "approve," nothing happens.
+
+**Fix:** route `approve_action` through the real tool dispatcher (`agent/core._execute_tool` / `agent/approvals._apply`) instead of cortex's read-only stub, so an approved action actually runs.
+
+---
+
+## 3. Weighted decision matrix (autonomy-weighted)
+
+**Weights:** Net-new 30% · Fit 25% · Low effort 15% · Low risk 15% · Low redundancy 15% · Integrate threshold ≥ 7.0
+Scores below are from the audit-grounded scoring agents (9 of 16 completed before a session rate limit; the rest scored by direct judgment, marked †). OpenClaw is TypeScript, so every "port" is a Python reimplementation — effort is penalized accordingly.
+
+| Capability | Net | Fit | Eff | Risk | Red | **Score** | Verdict |
 |---|---|---|---|---|---|---|---|
-| Sandboxed execution (Docker/SSH backend) | 10 | 10 | 6 | 9 | 10 | **9.25** | **PORT** |
-| Onboarding wizard (`ni onboard`) | 7 | 10 | 9 | 10 | 10 | **9.00** | **PORT** |
-| iMessage channel adapter | 9 | 9 | 5 | 7 | 9 | **8.00** | **PORT** |
-| Per-channel configurable personas | 7 | 8 | 8 | 9 | 9 | **8.00** | **PORT** |
-| Matrix / IRC / Mattermost adapters | 7 | 7 | 5 | 8 | 9 | **7.30** | **PORT** |
-| Microsoft Teams adapter | 7 | 7 | 4 | 7 | 9 | **7.00** | **PORT** |
-| ClawHub-style skill sharing (discovery layer) | 8 | 8 | 3 | 8 | 10 | **7.00** | **PORT (later)** |
-| Session handoff across devices | 6 | 7 | 5 | 7 | 10 | **7.00** | **Defer** |
-| Multi-agent isolated workspaces per channel | 6 | 6 | 4 | 6 | 6 | **5.70** | **Defer** |
-| Live Canvas | 8 | 6 | 2 | 7 | 10 | **6.25** | **Skip (now)** |
-| Native macOS app | 7 | 6 | 2 | 6 | 8 | **5.80** | **Skip** |
-| Native iOS app | 7 | 6 | 1 | 6 | 7 | **5.60** | **Skip** |
-| Plugin SDK (npm-style external plugins) | 6 | 5 | 2 | 5 | 8 | **5.25** | **Skip** |
-| Continuous voice mode (Android) | 5 | 5 | 2 | 7 | 3 | **4.45** | **Skip** |
+| **Sandboxed execution (Docker/SSH backend)** | 9 | 9 | 5 | 8 | 10 | **8.40** | **PORT NOW** |
+| Onboarding wizard (`ni onboard`, incl. cloud setup) † | 8 | 9 | 8 | 10 | 9 | **8.40** | **PORT NOW** |
+| Per-session sandbox/trust policy for inbound channels | 8 | 9 | 5 | 7 | 8 | **7.65** | **BUILD SOON** |
+| iMessage channel adapter (BlueBubbles) | 7 | 7 | 8 | 9 | 5 | **7.15** | **BUILD SOON** |
+| Live Canvas † | 8 | 6 | 3 | 7 | 10 | **6.55** | DEFER |
+| Per-channel personas | 4 | 6 | 8 | 9 | 5 | **6.00** | DEFER |
+| Multi-agent routing (per-channel isolated agents) † | 5 | 5 | 4 | 6 | 5 | **5.45** | DEFER |
+| Event triggers (webhooks / Gmail Pub/Sub) | 4 | 7 | 6 | 6 | 4 | **5.35** | DEFER |
+| Group/federated channels (Matrix/IRC/Mattermost/Teams) | 5 | 5 | 5 | 7 | 4 | **5.15** | DEFER |
+| Daemon mode / install-as-service | 3 | 7 | 7 | 8 | 4 | **5.50** | **SKIP — already have it** |
+| Off-device / cloud execution | 2 | 9 | 3 | 7 | 2 | **4.65** | **SKIP — already have it** |
+| Session handoff across devices † | 2 | 7 | 5 | 7 | 2 | **4.55** | **SKIP — omnipresence covers it** |
+| `sessions_spawn` parallel session control | 3 | 5 | 5 | 6 | 3 | **4.25** | SKIP (orchestrator ~85% covers) |
+| Native macOS/iOS/Android apps † | 7 | 6 | 2 | 6 | 8 | **5.80** | SKIP — PWA covers 85% |
+| Extra niche channels (Nostr/Twitch/WeChat/QQ/Zalo…) † | 4 | 4 | 5 | 7 | 7 | **5.05** | SKIP |
+| Plugin SDK (npm-style) † | 6 | 5 | 2 | 5 | 8 | **5.25** | SKIP — skill_forge is the better model |
 
-**Average score of PORT items: 8.09** — well above the 7.0 integrate threshold.
-
----
-
-## 4. The Case For Each Decision — Brutal Honesty
-
-### MUST PORT (score ≥ 8.0)
-
-#### 1. Sandboxed Execution — Score 9.25
-
-This is the single most important capability Apex is missing. Right now, when Apex executes a shell command for a user, it runs **directly on the host machine with full user permissions**. There is no sandbox, no container, no escape path if a skill misbehaves or a prompt injection sneaks through a web-fetched document.
-
-OpenClaw solves this cleanly: personal DMs run local (no overhead), but group/channel interactions run inside Docker or over SSH. The threat model is right. The implementation is clean. And crucially, Hermes also had this — we flagged it in the Hermes report with a score of 9.50 and it was the only capability from Hermes we recommended porting.
-
-**It is still not done.** This remains Apex's most significant security gap. A `Backend` abstract class (`LocalBackend`, `DockerBackend`, `SshBackend`), a `EXECUTION_BACKEND` config var, and wiring it into `tools/bash.py` and `skills/control_pc.py` closes the gap. This is not optional if Apex is deployed publicly or shared with anyone other than the user. Even for single-user: skill_forge generates and runs Python — that code executes with full host permissions. A Docker backend contains any self-generated code within a recyclable container.
-
-Estimated effort: **2–3 days** of Python work. Zero new dependencies if Docker is already installed.
-
-#### 2. Onboarding Wizard — Score 9.00
-
-OpenClaw ships a `openclaw onboard` CLI wizard that walks a new user through: API key, channel selection, permissions, first skill install, and optional daemon setup. Apex has none of this. Setup is: clone the repo, copy `.env.example`, fill in every variable manually, run `main.py`, figure out the rest.
-
-That gap doesn't matter for the builder. It matters enormously for anyone else using Apex — or for the builder in 6 months who has forgotten what half the env vars do. A `python main.py --onboard` (or `ni --onboard`) wizard that prompts for model API key, Telegram bot token, optional email/calendar/weather creds, and writes a clean `.env` — this is **one afternoon of work**, the highest ROI in the matrix per hour spent.
-
-This is also the foundation for any future multi-user scenario. You cannot give Apex to a second person without it. Build it now while the surface is still small.
-
-#### 3. iMessage Channel Adapter — Score 8.00
-
-OpenClaw's most distinctive channel. If your primary device is a Mac or iPhone, iMessage is where most of your human communication happens — not Telegram. Apex reaching you via iMessage means Apex is genuinely ambient in your daily life, not just reachable via a dedicated app or bot.
-
-Implementation path: **BlueBubbles** (open-source iMessage REST bridge for macOS). The adapter is ~200 lines of Python: POST to BlueBubbles API to send, webhook to receive. BlueBubbles handles the Apple proprietary layer. Requires a Mac running BlueBubbles server — but if the user is already running Apex on a Mac (which the Tailscale setup suggests), this is nearly zero additional infrastructure.
-
-This is the only channel in OpenClaw's 15 that is genuinely irreplaceable for the Apple ecosystem. iMessage has end-to-end encryption, read receipts, and reactions — all surfaceable by the adapter.
-
-#### 4. Per-Channel Configurable Personas — Score 8.00
-
-Jarvis gave Apex a single persona: British butler, "sir," dry wit. That persona is correct for the primary dashboard and voice interface. It is jarring when Apex also uses it inside a professional Slack workspace or a group IRC channel.
-
-OpenClaw solves this with a `personas.yaml` that maps channel type → persona config. The idea is simple and powerful: Apex should sound like a British butler when you're talking to it privately, and sound like a focused technical assistant when it's in your work Slack.
-
-Implementation: extend `agent/persona.py` with a `get_persona_for_channel(channel_id, channel_type)` lookup. Config is a dict in `config.py` or a YAML file. Each channel can override: base persona string, response style (formal/casual), max response length, sign-off style. Total work: **< 1 day**. The Jarvis persona system is already wired into core.py — this is additive.
+† = scored by direct judgment (scoring agent hit the rate limit); all others are audit-grounded agent scores.
 
 ---
 
-### WORTH BUILDING (score 7.0–7.99)
+## 4. The honest takeaways
 
-#### 5. Matrix / IRC / Mattermost Adapters — Score 7.30
+1. **OpenClaw's autonomy story is already Apex's autonomy story — and Apex's is arguably better.** A free Oracle Ampere VM under systemd beats a launchd agent on a sleeping MacBook. v1's "PORT daemon mode / off-device" was wrong; those shipped weeks ago.
 
-Matrix is the federated messaging protocol used by privacy-focused teams, open-source communities, and increasingly enterprise (Element server). IRC is the gold standard for open-source project channels. Mattermost is the self-hosted Slack alternative used by regulated industries (finance, healthcare, government).
+2. **The one real OpenClaw lesson is sandboxing.** On an always-on, internet-exposed VM where the cortex auto-runs `run_python` and any inbound channel message can drive host execution, "no sandbox" is the single biggest liability. Port a `Backend` abstraction (`LocalBackend` default, `DockerBackend` opt-in) behind `tools/bash.py`, `cortex._execute_tool`, and `skill_forge`. This is the only score ≥ 8 that Apex doesn't already cover. **Do it first.**
 
-All three have good Python libraries: `matrix-nio` for Matrix, `irc3` for IRC, `mattermostdriver` for Mattermost. Each adapter is ~150–300 lines following the pattern already established by `tools/telegram.py`. The combined effort for all three is roughly **3 days**.
+3. **The per-session trust policy is the natural follow-on.** OpenClaw's "main session = host, non-main = sandboxed with allow/deny lists" is the right model for letting Apex safely talk to group channels unattended. Build it once the Docker backend exists.
 
-The strategic argument: Apex becomes the only AI assistant reachable from the federated/open-source/enterprise-self-hosted world. That is a meaningful differentiator. These are not consumer channels — they are power-user channels. Exactly the audience that would use Apex.
+4. **iMessage is the one channel worth the TypeScript→Python rewrite** (BlueBubbles bridge), because it's where Apple users actually live. Everything else channel-wise is reach without autonomy payoff.
 
-#### 6. Microsoft Teams Adapter — Score 7.00
-
-Teams is where a large chunk of corporate communication happens. The adapter exists in OpenClaw (TypeScript) and the MS Graph API + Bot Framework provides a mature Python SDK. Effort is higher than Matrix/IRC because the authentication flow (OAuth 2.0, Azure app registration) is complex.
-
-The honest caveat: Teams is the least fun to build and the most politically fraught (corporate admin approval required to add a bot). Build this only if the user has an active Teams workspace they want Apex in. Score lands at exactly 7.0 — it passes the threshold but barely. Recommend: **build Matrix and IRC first**, then revisit Teams.
-
-#### 7. ClawHub-Style Skill Discovery Layer — Score 7.00
-
-ClawHub is OpenClaw's skill marketplace: a registry where users can publish, discover, and install community-built skills. Apex's skill_forge is powerful but entirely private — skills generated for one user's Apex instance never benefit anyone else.
-
-A lightweight version of this for Apex: a public GitHub repo (`apex-skills-hub`) where skill_forge outputs can be submitted via PR, reviewed, and tagged with capability metadata. The in-app side: `skills/hub.py` — `list_published()`, `install(skill_name)` (downloads, validates, stages for approval). The social side: a simple README-based catalog.
-
-This does not need to be a full marketplace with ratings and versioning. Even a curated list of 20 community skills makes Apex meaningfully richer for future users. **Defer 60 days** — the skill forge needs a larger body of auto-generated skills before a catalog has anything worth sharing.
+5. **Fix the three bugs before porting anything.** A disconnected cortex (laptop mode), a lossy scheduler, and a non-functional approval path each silently undercut "works without you there." They are cheap to fix and worth more than any new feature.
 
 ---
 
-### DEFER
+## 5. Recommended order of work
 
-#### 8. Session Handoff Across Devices — Score 7.00
-
-OpenClaw syncs conversation state across devices so you can start a conversation on your phone and continue it on your Mac without losing context. Apex has no equivalent — each session is independent, and the dashboard is the only multi-session view.
-
-This is a real missing feature. The implementation in Apex's context: WebSocket broadcast + a `session_id` cookie that persists across page loads, so the dashboard on phone and desktop share the same live session. Alternatively: a `--attach` flag for the CLI to join an existing resident session.
-
-**Defer**: the feature requires redesigning how sessions are identified and resumed. Not a quick add. Prioritize after sandboxed execution.
-
-#### 9. Multi-Agent Isolated Workspaces — Score 5.70
-
-OpenClaw runs fully isolated agent instances — separate memory, state, session history, and working directories — per channel or account. In principle this is good design: cross-channel contamination is impossible.
-
-In practice, Apex's shared longterm memory across channels is a feature, not a bug. When you ask Apex in Discord the same thing you asked it in Telegram yesterday, Apex remembers. That cross-channel semantic memory is what makes Apex smarter than a per-channel assistant. Full isolation would destroy that.
-
-The right model for Apex: **per-channel context isolation** (already implemented) with **shared longterm memory** (already implemented). OpenClaw's workspace isolation is the correct model for a shared/team AI assistant where different channels belong to different users. For a single-user personal AI, it is worse. **Skip this unless Apex ever becomes multi-user.**
+1. **Fix BUG 1** — wire cortex/awareness into `resident.py` (or unify entry points). ~½ day.
+2. **Fix BUG 2** — `SQLAlchemyJobStore` + `misfire_grace_time` + `coalesce`. ~½ day.
+3. **Fix BUG 3** — route `approve_action` through the real dispatcher. ~½ day.
+4. **PORT: sandboxed execution** — `Backend` interface + `DockerBackend`, gated by `EXECUTION_BACKEND`. ~2–3 days.
+5. **PORT: onboarding wizard** — `ni onboard` writing `.env` + offering the Oracle/Tailscale path. ~1 day.
+6. **BUILD SOON:** per-session sandbox/trust policy; iMessage adapter.
+7. **DEFER / SKIP:** everything else per the matrix.
 
 ---
 
-### SKIP
-
-#### 10. Live Canvas — Score 6.25
-
-OpenClaw's Live Canvas is an agent-driven visual whiteboard: the agent can place text, diagrams, and references on a shared canvas in real time. It's a compelling idea — but it requires a complex frontend (WebSocket + canvas rendering + collaborative state) and the backend to generate structured canvas operations.
-
-Honest verdict: **this is a product feature, not an agent capability**. Apex's Three.js constellation, dashboard, and WebSocket infrastructure could support a canvas eventually — but building it now would consume 2–3 weeks and deliver less value than the 4 must-ports combined. The primary use cases (research results, code review, brainstorming) are already served by Apex's chat UI + markdown rendering. **Revisit after the channel adapter suite is complete.**
-
-#### 11. Native macOS / iOS Apps — Score 5.80 / 5.60
-
-OpenClaw ships first-party native apps for macOS (Electron) and iOS (Swift). They provide better system integration than a PWA: push notifications without service workers, background processing, Files app integration, Share Sheet extensions.
-
-Apex has the desktop orb (`app/orb.py` — Phase 9 of Jarvis integration), the dashboard PWA with VAPID push, and `--resident` mode. That covers 85% of what the native apps provide.
-
-The remaining 15% (deep OS integration, offline mode, background sync) costs 8–12 weeks of native development per platform. That is not the right investment for a project that is already pushing its frontier in memory, self-improvement, and multi-channel reach. **Skip indefinitely unless the project transitions to a product.**
-
-#### 12. Plugin SDK (npm-style external plugins) — Score 5.25
-
-OpenClaw's plugin SDK lets third parties ship npm packages that add new capabilities. This is the right model for a platform product. Apex uses skill_forge to generate skills on demand — a fundamentally different and, for a personal AI, superior model. You don't install plugins; you tell Apex what you need and it builds the skill.
-
-The only scenario where an external plugin SDK makes sense: Apex becomes multi-user and third-party developers want to distribute skills without going through skill_forge. That is not the current or near-term trajectory. **Skip.**
-
-#### 13. Continuous Voice Mode (Android) — Score 4.45
-
-OpenClaw's Android app supports always-on voice with a hotword, continuously listening in the background. Apex has push-to-talk on mobile via the dashboard and wake-word mode (`--wakeword`) in the resident client.
-
-The gap is real but narrow. Continuous listening on Android requires a foreground service, battery optimisation exemptions, and careful VAD (Voice Activity Detection) tuning to avoid false triggers. The engineering cost is high and the marginal value over Apex's current voice setup is low. **Skip.**
-
----
-
-## 5. Pros vs Cons
-
-### Pros — What Integration Gives Apex
-
-1. **Security baseline**: Sandboxed execution is the single change that transforms Apex from "a powerful personal tool" into "a system that can be safely deployed for others." The Docker backend contains skill_forge's auto-generated code, protects the host from prompt injection via web-fetched content, and enables future multi-user scenarios. This is not optional for the greatest AI agent — an uncontained agent is a liability.
-
-2. **Ambient presence on Apple**: iMessage integration puts Apex where Apple users spend the most time. Not a Telegram bot you have to open — an intelligent contact in your iMessage thread. The mental model shift is significant: Apex goes from "the AI assistant I talk to" to "the AI that's already in my life."
-
-3. **Zero-friction setup**: The onboarding wizard makes Apex a project someone can hand to a friend. Right now it cannot be. Every new user faces a `.env.example` with 40 variables and no guidance. Fix this in one afternoon and Apex becomes shareable.
-
-4. **Channel-appropriate personality**: Per-channel personas prevent the awkward situation where Apex sounds like Jarvis in a work Slack or a professional Teams channel. Small change, massive quality-of-life improvement for anyone using Apex in professional contexts.
-
-5. **Open-source ecosystem reach**: Matrix and IRC adapters open Apex to the technical communities that live on federated/open protocols — exactly the kind of sophisticated users who would contribute skills, report bugs, and push Apex further. This is strategic positioning as much as a feature.
-
-### Cons — What Integration Costs
-
-1. **TypeScript→Python gap is real**: Every OpenClaw feature costs ~40% more effort than if it were a Python project. There is no code to port — only ideas to reimplement. The decision matrix accounts for this in effort scores, but it bears repeating: all estimates assume ground-up Python implementation.
-
-2. **Docker dependency for sandboxing**: `DockerBackend` requires Docker to be installed and running on the host. On Windows, that means Docker Desktop (significant disk usage, WSL2 requirement). On Linux, it's trivial. This narrows the sandboxing feature to Linux-first with graceful Windows fallback to `LocalBackend`. Acceptable — but worth documenting.
-
-3. **iMessage via BlueBubbles has a price**: BlueBubbles is free open-source, but requires a Mac running it 24/7 as an iMessage bridge. If Apex's resident mode already runs on a Mac, this is free. If not, it introduces a new infrastructure component.
-
-4. **Channel proliferation increases surface area**: Every new channel adapter is a new OAuth flow, new webhook registration, new failure mode. The existing 5 channels (Telegram/Discord/Slack/WA/Signal) already require credential management. Adding 3–5 more multiplies that. Mitigate with a unified `ChannelConfig` dataclass and a channel health dashboard panel.
-
-5. **Skill marketplace is premature**: ClawHub is scored 7.00 but it requires a community to be useful. Building the infrastructure before anyone is publishing skills is backward. The right order: build sandboxed execution (so published skills are safe to run), let skill_forge accumulate a body of community-contributed skills, then build the catalog. Doing it now is building a library before you have books.
-
----
-
-## 6. Comparison: Jarvis vs Hermes vs Odysseus vs OpenClaw
-
-| Report | System | Architecture match | Verdict | Ports |
-|---|---|---|---|---|
-| Jarvis | Python, personal AI, Windows-first | 20% overlap | INTEGRATE — Apex was soulless without it | 9/14 capabilities |
-| Hermes | Python, identical architecture | 85% overlap | SKIP — Apex's twin; only add Docker backend | 1/14 |
-| Odysseus | Python, email+calendar focus | 50% overlap | SELECTIVE — email triage + CalDAV | 2/14 |
-| **OpenClaw** | **TypeScript, channel-first platform** | **25% overlap** | **SELECTIVE — security + reach + polish** | **4 must + 3 later** |
-
-OpenClaw lands between Jarvis and Hermes in value density. It is not a soul donor — Apex already has soul. It is an infrastructure and reach donor: sandboxed execution makes Apex safer, iMessage makes it more ambient, the onboarding wizard makes it shareable, and per-channel personas make it professionally appropriate.
-
----
-
-## 7. Implementation Roadmap
-
-### Tier 1 — Build Now (next sprint)
-
-| Feature | Files | Effort | Notes |
-|---|---|---|---|
-| Sandboxed execution | `tools/bash_backend.py` (NEW) · `tools/bash.py` (MODIFY) · `config.py` · `skills/control_pc.py` | 2–3 days | `LocalBackend` default; `DockerBackend` when `EXECUTION_BACKEND=docker`; env var also controls skill_forge sandbox |
-| Onboarding wizard | `cli/onboard.py` (NEW) · `main.py --onboard` | 1 day | Prompts for: ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, optional email/calendar/weather/BlueBubbles; writes `.env`; validates keys before saving |
-| iMessage adapter (BlueBubbles) | `tools/imessage.py` (NEW) · `agent/core.py` (extend channel dispatch) · `config.py` | 1.5 days | `BLUEBUBBLES_URL`, `BLUEBUBBLES_PASSWORD` env vars; send + receive webhook |
-| Per-channel personas | `agent/persona.py` (MODIFY) · `config.py` | 0.5 days | `CHANNEL_PERSONAS` dict in config; `get_persona_for_channel(ch_id, ch_type)` → override string or None |
-
-**Total Tier 1: ~5–6 days of focused work.**
-
-### Tier 2 — Build in Next 30 Days
-
-| Feature | Files | Effort |
-|---|---|---|
-| Matrix adapter | `tools/matrix.py` (NEW) · `matrix-nio` pip dep | 1.5 days |
-| IRC adapter | `tools/irc.py` (NEW) · `irc3` pip dep | 1 day |
-| Mattermost adapter | `tools/mattermost.py` (NEW) · `mattermostdriver` pip dep | 1 day |
-| Microsoft Teams adapter | `tools/teams.py` (NEW) · `botframework-connector` pip dep | 2 days |
-
-**Total Tier 2: ~5.5 days.**
-
-### Tier 3 — Defer to 60+ Days
-
-- **ClawHub-style skill hub**: Build after skill_forge has 20+ auto-generated skills worth sharing
-- **Session handoff**: Requires session ID redesign; schedule after a clean refactor sprint
-- **Live Canvas**: Revisit after channel suite is stable
-
-### Never Build
-
-- Native macOS/iOS/Android apps — Apex is not a product
-- Plugin SDK (npm-style) — skill_forge is the better model for a personal AI
-- Continuous Android voice — marginal value, high cost
-
----
-
-## 8. Final Verdict
-
-**Integrate selectively. The signal from OpenClaw is security and reach.**
-
-OpenClaw does not make Apex smarter. Apex is already smarter — deeper memory, self-improvement, skill_forge, multi-expert constellation. What OpenClaw makes Apex is **safer** (Docker sandbox), **more present** (iMessage), **more professional** (per-channel personas), and **more accessible to new users** (onboarding wizard). Those four things are not features — they are properties of a mature, deployable system.
-
-The greatest AI agent of all time is not just the most capable. It is the most capable system that is also safe to run, present where the user actually lives, and usable by someone other than the builder.
-
-OpenClaw hands Apex the missing pieces of that definition. Take them.
-
----
-
-_Decision: SELECTIVE INTEGRATION — 4 must-ports, 3 defer, 7 skip._
-_Tier 1 effort: ~5–6 days. Expected outcome: Apex becomes containable, shareable, and ambient._
+_Decision: PORT sandboxed execution + onboarding wizard. BUILD per-session trust policy + iMessage. SKIP all daemon/off-device/handoff items (already shipped). FIX three latent autonomy bugs first — they matter more than any port._
