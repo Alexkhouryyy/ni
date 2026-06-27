@@ -111,6 +111,20 @@ MAX_PAGE_CONTENT_CHARS = 8000
 # Bash
 BASH_TIMEOUT = 30               # seconds
 
+# Execution sandbox — where bash + run_python actually execute.
+#   EXECUTION_BACKEND=local   (default) runs on the host with full permissions.
+#   EXECUTION_BACKEND=docker  runs each command in a throwaway container.
+# When docker is selected but unavailable: fall back to local with a warning,
+# unless SANDBOX_REQUIRE=true (then refuse to execute — fail closed).
+EXECUTION_BACKEND = os.getenv("EXECUTION_BACKEND", "local").strip().lower()
+SANDBOX_REQUIRE = os.getenv("SANDBOX_REQUIRE", "false").strip().lower() in ("1", "true", "yes")
+SANDBOX_DOCKER_IMAGE = os.getenv("SANDBOX_DOCKER_IMAGE", "python:3.11-slim")
+SANDBOX_NETWORK = os.getenv("SANDBOX_NETWORK", "none").strip().lower()   # "none" | "bridge"
+SANDBOX_MEMORY = os.getenv("SANDBOX_MEMORY", "512m")
+SANDBOX_CPUS = os.getenv("SANDBOX_CPUS", "1.0")
+SANDBOX_PIDS_LIMIT = int(os.getenv("SANDBOX_PIDS_LIMIT", "256"))
+SANDBOX_WORKDIR = os.getenv("SANDBOX_WORKDIR", "~/Documents/Apex/sandbox")
+
 # Screen
 SCREENSHOT_QUALITY = 85         # JPEG quality for screenshots sent to Claude
 

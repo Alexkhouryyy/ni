@@ -129,13 +129,10 @@ def _execute_tool(tool: str, inputs: dict) -> str:
             results = longterm.recall(inputs.get("query", ""), limit=5)
             return "\n".join(r.get("content", "") for r in results)[:500]
         elif tool == "run_python":
-            import subprocess, sys
+            from tools import sandbox
             code = inputs.get("code", "")
-            proc = subprocess.run(
-                [sys.executable, "-c", code],
-                capture_output=True, text=True, timeout=10,
-            )
-            return (proc.stdout + proc.stderr)[:500]
+            res = sandbox.get_backend().run_python(code, timeout=10)
+            return (res["stdout"] + res["stderr"])[:500]
         else:
             return f"[cortex] no executor for {tool!r}"
     except Exception as e:

@@ -157,19 +157,17 @@ def _validate_in_sandbox(code: str, test_inputs: dict) -> tuple[bool, str]:
             print(json.dumps({{"ok": False, "error": str(e)}}))
     """)
     try:
-        proc = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True, text=True, timeout=10,
-        )
-        out = proc.stdout.strip()
+        from tools import sandbox
+        res = sandbox.get_backend().run_python(script, timeout=10)
+        out = (res.get("stdout") or "").strip()
         if not out:
-            return False, (proc.stderr[:200] or "no output")
+            if res.get("returncode") == -1 and "timed out" in (res.get("stderr") or ""):
+                return False, "sandbox timed out (10s)"
+            return False, ((res.get("stderr") or "")[:200] or "no output")
         data = json.loads(out)
         if data.get("ok"):
             return True, data.get("result", "")
         return False, data.get("error", "unknown error")
-    except subprocess.TimeoutExpired:
-        return False, "sandbox timed out (10s)"
     except Exception as e:
         return False, str(e)
 

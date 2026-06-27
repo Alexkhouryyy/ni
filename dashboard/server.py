@@ -204,11 +204,18 @@ async def web_manifest():
 # --- Status ---
 @app.get("/api/status")
 def status():
+    try:
+        from tools import sandbox
+        exec_backend = sandbox.active_backend_name()
+    except Exception:
+        exec_backend = "local"
     return {
         "model": _agent_ref._model if _agent_ref else config.AGENT_MODEL,
         "proactive_enabled": config.PROACTIVE_ENABLED,
         "awareness_enabled": config.AWARENESS_ENABLED,
         "tools_count": len(_agent_ref._all_tools()) if _agent_ref else 0,
+        "exec_backend": exec_backend,
+        "sandboxed": exec_backend in ("docker", "refusing"),
         "uptime_s": int(time.time() - _START_TIME),
     }
 

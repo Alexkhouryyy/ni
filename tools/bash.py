@@ -1,43 +1,16 @@
-"""Safe bash execution tool."""
-import subprocess
-import os
+"""Safe bash execution tool.
+
+Execution is delegated to the configured backend (host or Docker sandbox) — see
+``tools/sandbox.py``. The return shape is unchanged so every caller is unaffected.
+"""
 import config
+from tools import sandbox
 
 
 def run(command: str, timeout: int = None, cwd: str = None) -> dict:
     """Run a shell command. Returns {stdout, stderr, returncode, success}."""
     timeout = timeout or config.BASH_TIMEOUT
-    cwd = cwd or os.path.expanduser("~")
-
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=cwd,
-        )
-        return {
-            "stdout": result.stdout.strip(),
-            "stderr": result.stderr.strip(),
-            "returncode": result.returncode,
-            "success": result.returncode == 0,
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "stdout": "",
-            "stderr": f"Command timed out after {timeout}s",
-            "returncode": -1,
-            "success": False,
-        }
-    except Exception as e:
-        return {
-            "stdout": "",
-            "stderr": str(e),
-            "returncode": -1,
-            "success": False,
-        }
+    return sandbox.get_backend().run_shell(command, timeout=timeout, cwd=cwd)
 
 
 def format_result(result: dict) -> str:
