@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Apex">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
-<link rel="stylesheet" href="/static/styles.css?v=omni13">
-<link rel="stylesheet" href="/static/mobile.css?v=omni13">
+<link rel="stylesheet" href="/static/styles.css?v=omni14">
+<link rel="stylesheet" href="/static/mobile.css?v=omni14">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -433,6 +433,21 @@
         <div class="pair-hint">On your phone, open the camera and scan this. It opens Apex pre-configured — then tap <b>Add to Home Screen</b>.</div>
       </div>
       <div id="devices-list" class="devices-list"></div>
+    </div>
+
+    <!-- Per-device access tokens -->
+    <div class="panel" id="access-panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <h3>Access tokens</h3>
+        <button id="token-new-btn" class="ghost-btn">+ New device token</button>
+      </div>
+      <div class="guardian-desc">Revocable per-device credentials. Mint one per phone or browser, then revoke a lost device without changing the password on the others. (Master-token only.)</div>
+      <div id="token-new-box" class="pair-box" style="display:none">
+        <input id="token-label" type="text" placeholder="Label (e.g. iPhone, work laptop)" class="token-label-input">
+        <button id="token-create" class="primary-btn">Create</button>
+      </div>
+      <div id="token-reveal" class="token-reveal"></div>
+      <div id="tokens-list" class="devices-list"></div>
     </div>
 
     <!-- Guardian Angel panel -->
@@ -918,9 +933,9 @@
   <button class="ib-no" id="install-no">Not now</button>
 </div>
 
-<script src="/static/app.js?v=omni13"></script>
-<script src="/static/voice-mobile.js?v=omni13"></script>
+<script src="/static/app.js?v=omni14"></script>
+<script src="/static/voice-mobile.js?v=omni14"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
-<script type="module" src="/static/cst3d.js?v=omni13"></script>
+<script type="module" src="/static/cst3d.js?v=omni14"></script>
 </body>
 </html>

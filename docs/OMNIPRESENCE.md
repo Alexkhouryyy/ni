@@ -173,5 +173,9 @@ Apex in every tab. See `apex-extension/README.md`:
 - **Secrets stay in `.env`** (git-ignored): `DASHBOARD_TOKEN`, `VAPID_PRIVATE_KEY`,
   and any channel tokens. Never commit them.
 - **Fail closed:** no public bind without a token.
-- *Future hardening:* per-device signed tokens (so one device can be revoked
-  without rotating the shared token).
+- **Per-device tokens:** mint a revocable token per device from **Telemetry →
+  Access tokens**. Any device token authenticates like the master `DASHBOARD_TOKEN`
+  but can be revoked individually — so a lost phone is cut off without rotating
+  the shared secret on every other device. Only the master token can mint or
+  revoke device tokens, and only the SHA-256 hash is stored (a DB leak exposes no
+  live token).

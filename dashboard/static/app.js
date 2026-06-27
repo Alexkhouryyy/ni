@@ -1150,6 +1150,7 @@ async function loadTelemetry() {
   loadGuardian();
   loadTimeCapsule();
   loadDevices();
+  loadTokens();
   const days = parseInt(document.getElementById('tel-window').value);
   const t = await api('/api/telemetry?days=' + days);
   document.getElementById('tel-cost').textContent = fmtCost(t.total_cost_usd);
@@ -2674,6 +2675,71 @@ async function loadDevices() {
 document.getElementById('pair-show-btn')?.addEventListener('click', () => {
   document.getElementById('pair-box')?.classList.toggle('show');
 });
+
+// ============== ACCESS TOKENS (per-device, revocable) ==============
+async function loadTokens() {
+  const listEl = document.getElementById('tokens-list');
+  if (!listEl) return;
+  try {
+    const d = await api('/api/auth/tokens');
+    const toks = d.tokens || [];
+    if (!toks.length) {
+      listEl.innerHTML = '<div class="guardian-empty">No device tokens yet — mint one to give a device its own revocable key.</div>';
+      return;
+    }
+    listEl.innerHTML = toks.map(t => {
+      const used = t.last_used ? 'last used ' + fmtDate(t.last_used) : 'never used';
+      const state = t.revoked
+        ? '<span class="tok-revoked">revoked</span>'
+        : `<button class="tok-revoke" data-id="${t.id}">Revoke</button>`;
+      return `<div class="dev-row tok-row${t.revoked ? ' tok-row-off' : ''}">` +
+        `<span class="dev-ico">🔑</span>` +
+        `<span class="dev-label">${escapeHTML(t.label || 'device')}<span class="tok-meta"> · ${used}</span></span>` +
+        state + `</div>`;
+    }).join('');
+    listEl.querySelectorAll('.tok-revoke').forEach(b =>
+      b.addEventListener('click', () => revokeToken(b.dataset.id)));
+  } catch (e) {
+    // 403 → not the master token; hide the management panel entirely.
+    const panel = document.getElementById('access-panel');
+    if (panel) panel.style.display = 'none';
+  }
+}
+
+async function createToken() {
+  const labelEl = document.getElementById('token-label');
+  const label = (labelEl?.value || '').trim();
+  const reveal = document.getElementById('token-reveal');
+  try {
+    const res = await api('/api/auth/tokens', { method: 'POST', body: { label } });
+    if (res.error) { reveal.innerHTML = `<div class="tok-err">${escapeHTML(res.error)}</div>`; return; }
+    reveal.innerHTML =
+      `<div class="tok-card"><div class="tok-card-head">New token — copy it now, it won't be shown again</div>` +
+      `<code class="tok-value">${escapeHTML(res.token)}</code>` +
+      `<button class="ghost-btn tok-copy">Copy</button>` +
+      `<div class="tok-hint">On the new device, open <code>${escapeHTML(res.pair_url)}</code> or paste the token into the login screen.</div></div>`;
+    reveal.querySelector('.tok-copy')?.addEventListener('click', () => {
+      navigator.clipboard?.writeText(res.token);
+      reveal.querySelector('.tok-copy').textContent = 'Copied ✓';
+    });
+    if (labelEl) labelEl.value = '';
+    document.getElementById('token-new-box').style.display = 'none';
+    loadTokens();
+  } catch (e) { reveal.innerHTML = `<div class="tok-err">Failed: ${escapeHTML(e.message)}</div>`; }
+}
+
+async function revokeToken(id) {
+  try {
+    await api(`/api/auth/tokens/${id}/revoke`, { method: 'POST', body: {} });
+    loadTokens();
+  } catch (_) {}
+}
+
+document.getElementById('token-new-btn')?.addEventListener('click', () => {
+  const box = document.getElementById('token-new-box');
+  if (box) box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+});
+document.getElementById('token-create')?.addEventListener('click', createToken);
 
 
 // ========================== VISION / CAMERA ==========================

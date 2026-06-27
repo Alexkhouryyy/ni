@@ -162,8 +162,21 @@ async def _auth(request: Request, call_next):
     if _throttle.is_locked(ip):
         return Response("Too many attempts. Try again later.", status_code=429)
     auth = request.headers.get("Authorization", "")
-    if auth == f"Bearer {token}":
-        return await call_next(request)
+    provided = auth[7:] if auth.startswith("Bearer ") else ""
+    if provided:
+        # The shared DASHBOARD_TOKEN is the master credential; per-device tokens
+        # are revocable peers. Mark which one authenticated so management endpoints
+        # can require master.
+        if provided == token:
+            request.state.is_master = True
+            return await call_next(request)
+        try:
+            from agent import access_tokens
+            if access_tokens.verify(provided):
+                request.state.is_master = False
+                return await call_next(request)
+        except Exception:
+            pass
     _throttle.record_failure(ip)
     return Response("Unauthorized", status_code=401)
 
@@ -878,6 +891,44 @@ def pair_info(request: Request):
             "base": (getattr(config, "PUBLIC_BASE_URL", "") or str(request.base_url).rstrip("/"))}
 
 
+# --- Per-device access tokens (revocable; managed only by the master token) ---
+def _require_master(request: Request) -> bool:
+    """Device-scoped tokens may use the app but not mint/revoke other tokens."""
+    return getattr(request.state, "is_master", False)
+
+
+@app.get("/api/auth/tokens")
+def auth_tokens_list(request: Request):
+    if not _require_master(request):
+        return JSONResponse({"error": "Only the master token can manage device tokens."}, status_code=403)
+    from agent import access_tokens
+    return {"tokens": access_tokens.list_tokens()}
+
+
+@app.post("/api/auth/tokens")
+async def auth_tokens_issue(request: Request):
+    if not _require_master(request):
+        return JSONResponse({"error": "Only the master token can mint device tokens."}, status_code=403)
+    body = await request.json()
+    label = (body.get("label") or "").strip()
+    from agent import access_tokens
+    token = access_tokens.issue(label=label)
+    # Build a pairing URL that carries the NEW device token (not the master secret).
+    base = (getattr(config, "PUBLIC_BASE_URL", "") or str(request.base_url).rstrip("/")).rstrip("/")
+    pair_url = f"{base}/?source=pair#token={token}"
+    # Returned ONCE — the raw token is not recoverable afterwards.
+    return {"token": token, "pair_url": pair_url, "label": label}
+
+
+@app.post("/api/auth/tokens/{token_id}/revoke")
+def auth_tokens_revoke(token_id: int, request: Request):
+    if not _require_master(request):
+        return JSONResponse({"error": "Only the master token can revoke device tokens."}, status_code=403)
+    from agent import access_tokens
+    ok = access_tokens.revoke(token_id)
+    return {"ok": ok}
+
+
 @app.get("/api/pending-actions")
 def pending_actions_list():
     """List cortex actions awaiting user approval."""
@@ -1507,9 +1558,18 @@ async def ws_live(ws: WebSocket):
     # HTTP middleware does not run for WebSocket upgrades, so the dashboard
     # token must be checked here against the ?token= query parameter.
     token = config.DASHBOARD_TOKEN
-    if token and ws.query_params.get("token") != token:
-        await ws.close(code=1008)  # 1008 = policy violation
-        return
+    if token:
+        qtoken = ws.query_params.get("token")
+        ok = (qtoken == token)
+        if not ok:
+            try:
+                from agent import access_tokens
+                ok = access_tokens.verify(qtoken)
+            except Exception:
+                ok = False
+        if not ok:
+            await ws.close(code=1008)  # 1008 = policy violation
+            return
     await ws_manager.connect(ws)
     if ws_manager.loop is None:
         ws_manager.loop = asyncio.get_event_loop()

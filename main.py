@@ -73,6 +73,7 @@ def main():
     from agent import skill_forge as _forge_mod; _forge_mod.init_db()
     from agent import approvals as _appr_init; _appr_init.init_db()
     from agent import compare as _compare_init; _compare_init.init_db()
+    from agent import access_tokens as _at_init; _at_init.init_db()
     session_id = longterm.start_session()
     telemetry.set_session(session_id)
     print(f"[Memory] Session #{session_id} started. DB: {longterm.DB_PATH}")
