@@ -656,6 +656,36 @@ TOOLS = [
             "required": [],
         },
     },
+    # --- Documents: the writing-first editor (dashboard → Documents tab) ---
+    {
+        "name": "document_write",
+        "description": "Create a new document (or overwrite/append to an existing one) in the user's Documents editor. Use when the user asks you to draft, write, or compose longer-form text — an essay, blog post, email draft, plan, notes — so it lands in the Documents tab where they can refine it with AI edits. Content is Markdown.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Document title"},
+                "content": {"type": "string", "description": "Markdown body"},
+                "doc_id": {"type": "integer", "description": "Existing document id to update; omit to create new"},
+                "mode": {"type": "string", "enum": ["replace", "append"], "default": "replace",
+                          "description": "When doc_id is given: replace the body or append to it"},
+            },
+            "required": ["title", "content"],
+        },
+    },
+    {
+        "name": "document_list",
+        "description": "List the user's documents (id, title, word count, last edited). Use to find a document before reading or updating it.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "document_read",
+        "description": "Read the full content of a document by id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"doc_id": {"type": "integer"}},
+            "required": ["doc_id"],
+        },
+    },
     # --- Tier-4: Knowledge Graph (entities + relations) ---
     {
         "name": "entity_upsert",
@@ -1360,6 +1390,31 @@ def _execute_tool(name: str, inputs: dict) -> str:
         elif name == "evaluate_recent_work":
             client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
             return goals.evaluate_recent_work(client, days=inputs.get("days", 7))
+
+        # --- Documents (writing-first editor) ---
+        elif name == "document_write":
+            from agent import documents as _docs
+            doc_id = inputs.get("doc_id")
+            title = inputs.get("title", "Untitled")
+            content = inputs.get("content", "")
+            if doc_id:
+                existing = _docs.get(int(doc_id))
+                if not existing:
+                    return f"No document with id {doc_id}."
+                if inputs.get("mode") == "append":
+                    content = (existing["content"] or "") + ("\n\n" if existing["content"] else "") + content
+                d = _docs.update(int(doc_id), title=title, content=content)
+            else:
+                d = _docs.create(title=title, content=content)
+            return f"Saved document #{d['id']} '{d['title']}' ({len(content.split())} words). Open the Documents tab to refine it."
+        elif name == "document_list":
+            from agent import documents as _docs
+            rows = _docs.list_documents()
+            return json.dumps([{"id": r["id"], "title": r["title"], "words": r["words"]} for r in rows], indent=2) if rows else "No documents yet."
+        elif name == "document_read":
+            from agent import documents as _docs
+            d = _docs.get(int(inputs["doc_id"]))
+            return json.dumps({"id": d["id"], "title": d["title"], "content": d["content"]}, indent=2) if d else "Document not found."
 
         # --- Tier-4: Knowledge Graph ---
         elif name == "entity_upsert":
