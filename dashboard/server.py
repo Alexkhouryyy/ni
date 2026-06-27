@@ -88,6 +88,13 @@ class WSManager:
 
 ws_manager = WSManager()
 
+# Live-refresh open Documents tabs on any write (editor save OR agent document_write).
+try:
+    from agent import documents as _documents_mod
+    _documents_mod.set_broadcaster(ws_manager.broadcast_threadsafe)
+except Exception:
+    pass
+
 _chat_lock: Optional[asyncio.Lock] = None
 
 

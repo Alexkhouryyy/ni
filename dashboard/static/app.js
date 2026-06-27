@@ -179,6 +179,14 @@ function connectWS() {
     if (msg.type === 'rollback_done' && document.getElementById('tab-evolution')?.classList.contains('active')) {
       loadEvolution();
     }
+    // A document was written (by the editor or the agent) — refresh the list, but
+    // don't clobber the doc the user is actively editing.
+    if (msg.type === 'document_saved' && document.getElementById('tab-documents')?.classList.contains('active')) {
+      _docRefreshList();
+      if (_docCurrent != null && msg.id === _docCurrent && _docSaveState() === 'saved') {
+        _docReloadOpen();
+      }
+    }
   };
   setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 25000);
 }
@@ -2397,6 +2405,23 @@ function toggleDocPreview() {
 function _docSetSaveState(s) {
   const el = document.getElementById('doc-save-state');
   if (el) el.textContent = s;
+}
+
+function _docSaveState() {
+  return document.getElementById('doc-save-state')?.textContent || '';
+}
+
+async function _docReloadOpen() {
+  if (_docCurrent == null) return;
+  try {
+    const doc = await api('/api/documents/' + _docCurrent);
+    if (doc.error) return;
+    // Only swap in if the user still has no unsaved local edits.
+    if (_docSaveState() !== 'saved') return;
+    document.getElementById('doc-title').value = doc.title || '';
+    document.getElementById('doc-body').value = doc.content || '';
+    _docSyncPreview();
+  } catch (_) {}
 }
 
 // ============== THE CONSTELLATION ==============

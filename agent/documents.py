@@ -15,6 +15,23 @@ import time
 import config
 from agent import longterm, provider
 
+# Optional broadcaster (injected by the dashboard) so any write — whether from the
+# editor or from the agent's document_write tool — live-refreshes open Documents tabs.
+_broadcast_fn = None
+
+
+def set_broadcaster(fn) -> None:
+    global _broadcast_fn
+    _broadcast_fn = fn
+
+
+def _broadcast(doc_id: int) -> None:
+    if _broadcast_fn:
+        try:
+            _broadcast_fn({"type": "document_saved", "id": doc_id})
+        except Exception:
+            pass
+
 
 def init_db() -> None:
     with longterm._conn() as c:
@@ -70,6 +87,7 @@ def create(title: str = "Untitled", content: str = "", fmt: str = "markdown") ->
             (title or "Untitled", content or "", fmt or "markdown", now, now),
         )
         doc_id = cur.lastrowid
+    _broadcast(doc_id)
     return get(doc_id)
 
 
@@ -85,6 +103,7 @@ def update(doc_id: int, title: str | None = None, content: str | None = None) ->
     vals.append(int(doc_id))
     with longterm._conn() as c:
         c.execute(f"UPDATE documents SET {', '.join(sets)} WHERE id = ?", vals)
+    _broadcast(int(doc_id))
     return get(doc_id)
 
 

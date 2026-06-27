@@ -61,3 +61,23 @@ def test_ai_edit_handles_provider_error(test_db, monkeypatch):
     monkeypatch.setattr(provider, "complete", boom)
     out = docs.ai_edit("text", preset="improve")
     assert "error" in out and "no api key" in out["error"]
+
+
+def test_broadcaster_fires_on_write(test_db):
+    docs.init_db()
+    events = []
+    docs.set_broadcaster(lambda payload: events.append(payload))
+    try:
+        d = docs.create("T", "body")
+        docs.update(d["id"], content="new body")
+    finally:
+        docs.set_broadcaster(None)  # don't leak into other tests
+    assert {"type": "document_saved", "id": d["id"]} in events
+    assert len(events) == 2  # one create + one update
+
+
+def test_broadcaster_none_is_safe(test_db):
+    docs.init_db()
+    docs.set_broadcaster(None)
+    # Writes must still succeed with no broadcaster wired.
+    assert docs.create("X", "y")["id"]
