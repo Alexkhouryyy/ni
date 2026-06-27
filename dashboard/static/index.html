@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Apex">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
-<link rel="stylesheet" href="/static/styles.css?v=omni14">
-<link rel="stylesheet" href="/static/mobile.css?v=omni14">
+<link rel="stylesheet" href="/static/styles.css?v=omni15">
+<link rel="stylesheet" href="/static/mobile.css?v=omni15">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -45,6 +45,7 @@
     <button data-tab="chat" class="nav-btn"><span class="icon">◌</span>Chat</button>
     <button data-tab="council" class="nav-btn"><span class="icon">⚖</span>Council</button>
     <button data-tab="compare" class="nav-btn"><span class="icon">⚔</span>Compare</button>
+    <button data-tab="documents" class="nav-btn"><span class="icon">✍</span>Documents</button>
     <button data-tab="constellation" class="nav-btn"><span class="icon">✷</span>Constellation</button>
 
     <div class="nav-group-label">Intelligence</div>
@@ -848,6 +849,46 @@
     </div>
   </section>
 
+  <!-- DOCUMENTS — writing-first editor with AI edits -->
+  <section id="tab-documents" class="tab">
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <div class="doc-sidebar-head">
+          <h2>Documents</h2>
+          <button id="doc-new" class="primary-btn doc-new-btn">+ New</button>
+        </div>
+        <div id="doc-list" class="doc-list"></div>
+      </aside>
+      <div class="doc-main">
+        <div id="doc-empty" class="doc-empty">Select a document, or create a new one to start writing. Select text and use the AI toolbar to edit it.</div>
+        <div id="doc-editor" class="doc-editor" style="display:none">
+          <div class="doc-toolbar">
+            <input id="doc-title" class="doc-title-input" placeholder="Untitled">
+            <span id="doc-save-state" class="doc-save-state">saved</span>
+            <button id="doc-preview-toggle" class="ghost-btn">Preview</button>
+            <button id="doc-delete" class="ghost-btn doc-del">Delete</button>
+          </div>
+          <div class="doc-ai-bar">
+            <span class="doc-ai-label">AI:</span>
+            <button class="doc-ai-act" data-preset="improve">Improve</button>
+            <button class="doc-ai-act" data-preset="shorten">Shorten</button>
+            <button class="doc-ai-act" data-preset="expand">Expand</button>
+            <button class="doc-ai-act" data-preset="grammar">Fix grammar</button>
+            <button class="doc-ai-act" data-preset="formal">Formal</button>
+            <button class="doc-ai-act" data-preset="casual">Casual</button>
+            <button class="doc-ai-act" data-preset="continue">Continue</button>
+            <input id="doc-ai-custom" class="doc-ai-custom" placeholder="…or type an instruction & press Enter">
+            <span id="doc-ai-scope" class="doc-ai-scope">whole doc</span>
+          </div>
+          <div class="doc-panes">
+            <textarea id="doc-body" class="doc-body" placeholder="Start writing in Markdown…" spellcheck="true"></textarea>
+            <div id="doc-preview" class="doc-preview markdown-body" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- CONSTELLATION -->
   <section id="tab-constellation" class="tab">
     <header class="page-head">
@@ -933,9 +974,9 @@
   <button class="ib-no" id="install-no">Not now</button>
 </div>
 
-<script src="/static/app.js?v=omni14"></script>
-<script src="/static/voice-mobile.js?v=omni14"></script>
+<script src="/static/app.js?v=omni15"></script>
+<script src="/static/voice-mobile.js?v=omni15"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
-<script type="module" src="/static/cst3d.js?v=omni14"></script>
+<script type="module" src="/static/cst3d.js?v=omni15"></script>
 </body>
 </html>

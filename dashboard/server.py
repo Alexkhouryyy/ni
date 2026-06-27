@@ -1418,6 +1418,58 @@ async def compare_leaderboard():
     return compare.leaderboard()
 
 
+# --- Documents: writing-first editor with AI edits ---
+@app.get("/api/documents")
+def documents_list():
+    from agent import documents
+    return {"documents": documents.list_documents()}
+
+
+@app.get("/api/documents/{doc_id}")
+def documents_get(doc_id: int):
+    from agent import documents
+    doc = documents.get(doc_id)
+    return doc if doc else JSONResponse({"error": "not found"}, status_code=404)
+
+
+@app.post("/api/documents")
+async def documents_create(request: Request):
+    body = await request.json()
+    from agent import documents
+    return documents.create(title=(body.get("title") or "Untitled"),
+                            content=body.get("content") or "")
+
+
+@app.put("/api/documents/{doc_id}")
+async def documents_update(doc_id: int, request: Request):
+    body = await request.json()
+    from agent import documents
+    doc = documents.update(doc_id, title=body.get("title"), content=body.get("content"))
+    return doc if doc else JSONResponse({"error": "not found"}, status_code=404)
+
+
+@app.delete("/api/documents/{doc_id}")
+def documents_delete(doc_id: int):
+    from agent import documents
+    return {"ok": documents.delete(doc_id)}
+
+
+@app.post("/api/documents/ai-edit")
+async def documents_ai_edit(request: Request):
+    body = await request.json()
+    from agent import documents
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: documents.ai_edit(
+            text=body.get("text") or "",
+            instruction=body.get("instruction") or "",
+            preset=body.get("preset") or "",
+        ),
+    )
+    return JSONResponse(result, status_code=400 if result.get("error") else 200)
+
+
 # --- The Constellation: 12 domain-expert planets ---
 @app.get("/api/constellation/roster")
 async def constellation_roster():

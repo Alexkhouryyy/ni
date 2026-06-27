@@ -218,6 +218,7 @@ async function loadTab(tab) {
     chat: loadChat,
     council: loadCouncil,
     compare: loadCompare,
+    documents: loadDocuments,
     constellation: loadConstellation,
   };
   if (fns[tab]) try { await fns[tab](); } catch (e) { console.error('loadTab', tab, e); }
@@ -2220,6 +2221,182 @@ async function loadLeaderboard() {
 function _compareStatus(msg, isErr) {
   const s = document.getElementById('compare-status');
   if (s) s.innerHTML = `<div class="council-step${isErr ? ' council-step-err' : ''}">${escapeHTML(msg)}</div>`;
+}
+
+// ============== DOCUMENTS — writing-first editor with AI edits ==============
+let _docCurrent = null;       // currently open document id
+let _docSaveTimer = null;
+let _docWired = false;
+
+async function loadDocuments() {
+  if (!_docWired) { _wireDocuments(); _docWired = true; }
+  await _docRefreshList();
+}
+
+async function _docRefreshList() {
+  const listEl = document.getElementById('doc-list');
+  if (!listEl) return;
+  try {
+    const d = await api('/api/documents');
+    const docs = d.documents || [];
+    if (!docs.length) {
+      listEl.innerHTML = '<div class="doc-list-empty">No documents yet.</div>';
+      return;
+    }
+    listEl.innerHTML = docs.map(doc =>
+      `<div class="doc-item${doc.id === _docCurrent ? ' active' : ''}" data-id="${doc.id}">` +
+        `<div class="doc-item-title">${escapeHTML(doc.title || 'Untitled')}</div>` +
+        `<div class="doc-item-meta">${doc.words} words · ${fmtDate(doc.updated_at)}</div>` +
+        `<div class="doc-item-snip">${escapeHTML(doc.snippet || '')}</div>` +
+      `</div>`
+    ).join('');
+    listEl.querySelectorAll('.doc-item').forEach(el =>
+      el.addEventListener('click', () => openDoc(parseInt(el.dataset.id, 10))));
+  } catch (e) { listEl.innerHTML = '<div class="doc-list-empty">Could not load documents.</div>'; }
+}
+
+function _wireDocuments() {
+  document.getElementById('doc-new')?.addEventListener('click', newDoc);
+  document.getElementById('doc-delete')?.addEventListener('click', deleteDoc);
+  document.getElementById('doc-preview-toggle')?.addEventListener('click', toggleDocPreview);
+
+  const title = document.getElementById('doc-title');
+  const body = document.getElementById('doc-body');
+  title?.addEventListener('input', _docDirty);
+  body?.addEventListener('input', () => { _docDirty(); _docSyncPreview(); });
+  body?.addEventListener('mouseup', _docUpdateScope);
+  body?.addEventListener('keyup', _docUpdateScope);
+
+  document.querySelectorAll('.doc-ai-act').forEach(b =>
+    b.addEventListener('click', () => aiEditDoc(b.dataset.preset, '')));
+  const custom = document.getElementById('doc-ai-custom');
+  custom?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && custom.value.trim()) { e.preventDefault(); aiEditDoc('', custom.value.trim()); }
+  });
+}
+
+async function newDoc() {
+  try {
+    const doc = await api('/api/documents', { method: 'POST', body: { title: 'Untitled', content: '' } });
+    await _docRefreshList();
+    openDoc(doc.id);
+  } catch (_) {}
+}
+
+async function openDoc(id) {
+  try {
+    const doc = await api('/api/documents/' + id);
+    if (doc.error) return;
+    _docCurrent = doc.id;
+    document.getElementById('doc-empty').style.display = 'none';
+    document.getElementById('doc-editor').style.display = 'flex';
+    document.getElementById('doc-title').value = doc.title || '';
+    document.getElementById('doc-body').value = doc.content || '';
+    _docSyncPreview();
+    _docSetSaveState('saved');
+    _docUpdateScope();
+    document.querySelectorAll('.doc-item').forEach(el =>
+      el.classList.toggle('active', parseInt(el.dataset.id, 10) === id));
+  } catch (_) {}
+}
+
+function _docDirty() {
+  _docSetSaveState('unsaved');
+  if (_docSaveTimer) clearTimeout(_docSaveTimer);
+  _docSaveTimer = setTimeout(saveDoc, 800);  // debounced autosave
+}
+
+async function saveDoc() {
+  if (_docCurrent == null) return;
+  const title = document.getElementById('doc-title').value;
+  const content = document.getElementById('doc-body').value;
+  _docSetSaveState('saving');
+  try {
+    await api('/api/documents/' + _docCurrent, { method: 'PUT', body: { title, content } });
+    _docSetSaveState('saved');
+    _docRefreshList();
+  } catch (_) { _docSetSaveState('unsaved'); }
+}
+
+async function deleteDoc() {
+  if (_docCurrent == null) return;
+  if (!confirm('Delete this document? This cannot be undone.')) return;
+  try {
+    await api('/api/documents/' + _docCurrent, { method: 'DELETE' });
+    _docCurrent = null;
+    document.getElementById('doc-editor').style.display = 'none';
+    document.getElementById('doc-empty').style.display = 'block';
+    _docRefreshList();
+  } catch (_) {}
+}
+
+function _docSelection() {
+  const body = document.getElementById('doc-body');
+  if (!body) return { text: '', whole: true, start: 0, end: 0 };
+  const start = body.selectionStart, end = body.selectionEnd;
+  if (end > start) return { text: body.value.slice(start, end), whole: false, start, end };
+  return { text: body.value, whole: true, start: 0, end: body.value.length };
+}
+
+function _docUpdateScope() {
+  const scope = document.getElementById('doc-ai-scope');
+  if (!scope) return;
+  const sel = _docSelection();
+  scope.textContent = sel.whole ? 'whole doc' : `selection (${sel.text.length} chars)`;
+}
+
+async function aiEditDoc(preset, instruction) {
+  if (_docCurrent == null) return;
+  const body = document.getElementById('doc-body');
+  const sel = _docSelection();
+  const isContinue = preset === 'continue';
+  const text = isContinue ? body.value : sel.text;
+  if (!text.trim() && !isContinue) return;
+
+  _docSetSaveState('AI working…');
+  const custom = document.getElementById('doc-ai-custom');
+  try {
+    const res = await api('/api/documents/ai-edit', {
+      method: 'POST', body: { text, preset, instruction },
+    });
+    if (res.error) { _docSetSaveState('AI: ' + res.error); return; }
+    if (isContinue) {
+      body.value = body.value + (body.value.endsWith('\n') ? '' : '\n') + res.result;
+    } else if (sel.whole) {
+      body.value = res.result;
+    } else {
+      body.value = body.value.slice(0, sel.start) + res.result + body.value.slice(sel.end);
+    }
+    if (custom) custom.value = '';
+    _docSyncPreview();
+    _docDirty();
+  } catch (e) { _docSetSaveState('AI failed'); }
+}
+
+function _docSyncPreview() {
+  const pv = document.getElementById('doc-preview');
+  if (pv && pv.style.display !== 'none') {
+    pv.innerHTML = renderMarkdown(document.getElementById('doc-body').value || '');
+  }
+}
+
+function toggleDocPreview() {
+  const pv = document.getElementById('doc-preview');
+  const body = document.getElementById('doc-body');
+  const btn = document.getElementById('doc-preview-toggle');
+  if (!pv) return;
+  const showing = pv.style.display !== 'none';
+  if (showing) {
+    pv.style.display = 'none'; body.classList.remove('split'); btn.textContent = 'Preview';
+  } else {
+    pv.style.display = 'block'; body.classList.add('split'); btn.textContent = 'Edit only';
+    _docSyncPreview();
+  }
+}
+
+function _docSetSaveState(s) {
+  const el = document.getElementById('doc-save-state');
+  if (el) el.textContent = s;
 }
 
 // ============== THE CONSTELLATION ==============
