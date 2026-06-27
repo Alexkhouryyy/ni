@@ -2031,3 +2031,49 @@ pre.md-pre code { background: none; border: none; padding: 0; }
 .cal-time { font-size: 12.5px; color: var(--accent); font-weight: 600; white-space: nowrap; }
 .cal-summary { font-size: 13.5px; color: var(--text); }
 .cal-loc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+
+/* ============== COMPARE — blind side-by-side model testing ============== */
+.cmp-hint { font-size: 12px; color: var(--text-dim); margin-left: 10px; }
+.cmp-arena {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px; margin-top: 14px;
+}
+.cmp-card {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; display: flex; flex-direction: column; transition: border-color .2s, box-shadow .2s;
+}
+.cmp-card-won { border-color: var(--success); box-shadow: 0 0 0 2px rgba(80,220,150,0.18); }
+.cmp-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.cmp-slot {
+  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+  font-weight: 700; color: #001b29; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.cmp-pick-btn {
+  margin-left: auto; background: var(--accent); color: #001b29; border: none;
+  border-radius: 8px; padding: 6px 12px; font-weight: 600; cursor: pointer;
+}
+.cmp-pick-btn:hover { filter: brightness(1.1); }
+.cmp-reveal {
+  margin-left: auto; font-size: 12px; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px;
+}
+.cmp-reveal.cmp-winner { color: var(--success); border-color: var(--success); font-weight: 600; }
+.cmp-card-body { font-size: 13.5px; line-height: 1.55; color: var(--text); overflow-wrap: anywhere; }
+.cmp-card-body p:first-child { margin-top: 0; }
+.cmp-arena-actions { grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 4px; }
+.cmp-result { margin-top: 16px; }
+.cmp-synth-card {
+  background: var(--bg-2); border: 1px solid var(--accent-2); border-radius: 12px; padding: 16px 18px;
+}
+.cmp-synth-title { font-weight: 700; color: var(--accent-2); margin-bottom: 8px; }
+.cmp-synth-body { font-size: 14px; line-height: 1.6; color: var(--text); }
+.cmp-leaderboard-wrap { margin-top: 26px; }
+.cmp-lb-title { font-size: 15px; margin: 0 0 4px; }
+.cmp-lb-sub { font-size: 12px; color: var(--text-dim); font-weight: 400; }
+.cmp-lb-total { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.cmp-lb-empty { font-size: 13px; color: var(--text-dim); padding: 10px 0; }
+.cmp-lb-row { display: flex; align-items: center; gap: 12px; padding: 5px 0; }
+.cmp-lb-name { width: 90px; font-size: 13px; font-weight: 600; color: var(--text); }
+.cmp-lb-bar { flex: 1; height: 8px; background: var(--bg-3); border-radius: 999px; overflow: hidden; }
+.cmp-lb-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); }
+.cmp-lb-stat { width: 110px; text-align: right; font-size: 12px; color: var(--text-dim); }

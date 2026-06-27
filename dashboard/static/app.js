@@ -217,6 +217,7 @@ async function loadTab(tab) {
     camera: loadVision,
     chat: loadChat,
     council: loadCouncil,
+    compare: loadCompare,
     constellation: loadConstellation,
   };
   if (fns[tab]) try { await fns[tab](); } catch (e) { console.error('loadTab', tab, e); }
@@ -2081,6 +2082,143 @@ function _councilError(err) {
     d.textContent = 'Council failed: ' + err;
     progress.appendChild(d);
   }
+}
+
+// ============== COMPARE — blind side-by-side model testing ==============
+let compareRunning = false;
+let _compareId = null;
+
+async function loadCompare() {
+  const form = document.getElementById('compare-form');
+  if (form && !form._wired) {
+    form._wired = true;
+    form.addEventListener('submit', e => { e.preventDefault(); runCompare(); });
+    try {
+      const data = await api('/api/compare/roster');
+      const panel = document.getElementById('compare-panel');
+      if (panel) {
+        panel.innerHTML = (data.roster || []).map(m =>
+          `<label class="council-pick${m.available ? '' : ' disabled'}">` +
+          `<input type="checkbox" value="${escapeHTML(m.model)}" ${m.available ? 'checked' : 'disabled'}>` +
+          `<span>${escapeHTML(m.label)}${m.available ? '' : ' · no API key'}</span></label>`
+        ).join('');
+      }
+    } catch (e) { /* roster optional */ }
+  }
+  loadLeaderboard();
+}
+
+async function runCompare() {
+  if (compareRunning) return;
+  const q = document.getElementById('compare-question').value.trim();
+  if (!q) return;
+  const picks = Array.from(document.querySelectorAll('#compare-panel input'));
+  const panel = picks.filter(c => c.checked).map(c => c.value);
+  if (picks.length && panel.length < 2) { _compareStatus('Pick at least 2 models.', true); return; }
+
+  const btn = document.getElementById('compare-run');
+  const arena = document.getElementById('compare-arena');
+  const result = document.getElementById('compare-result');
+  compareRunning = true; _compareId = null;
+  btn.disabled = true; btn.textContent = 'Models answering…';
+  result.innerHTML = ''; arena.innerHTML = '';
+  _compareStatus('Asking every model in parallel — answers shown blind…');
+
+  const body = { question: q };
+  if (panel.length) body.panel = panel;
+  try {
+    const data = await api('/api/compare/run', { method: 'POST', body });
+    if (data.error) { _compareStatus(data.error, true); return; }
+    _compareId = data.compare_id;
+    _renderArena(data.entries);
+    _compareStatus(`${data.count} answers — read them, then pick the best. Labels are hidden.`);
+  } catch (e) {
+    _compareStatus('Request failed: ' + e.message, true);
+  } finally {
+    compareRunning = false;
+    btn.disabled = false; btn.textContent = 'Run blind comparison';
+  }
+}
+
+function _renderArena(entries) {
+  const arena = document.getElementById('compare-arena');
+  arena.innerHTML = (entries || []).map(e =>
+    `<div class="cmp-card" data-slot="${escapeHTML(e.slot)}">` +
+      `<div class="cmp-card-head"><span class="cmp-slot">${escapeHTML(e.slot)}</span>` +
+      `<button class="cmp-pick-btn" data-slot="${escapeHTML(e.slot)}">Pick ${escapeHTML(e.slot)} ✓</button></div>` +
+      `<div class="cmp-card-body">${renderMarkdown(e.text)}</div>` +
+    `</div>`
+  ).join('');
+  arena.querySelectorAll('.cmp-pick-btn').forEach(b =>
+    b.addEventListener('click', () => pickWinner(b.dataset.slot)));
+  const bar = document.createElement('div');
+  bar.className = 'cmp-arena-actions';
+  bar.innerHTML = '<button id="cmp-synth" class="ghost-btn">Synthesize best of all</button>';
+  arena.appendChild(bar);
+  const synth = document.getElementById('cmp-synth');
+  if (synth) synth.addEventListener('click', synthesizeCompare);
+}
+
+async function pickWinner(slot) {
+  if (!_compareId) return;
+  try {
+    const res = await api('/api/compare/pick', { method: 'POST', body: { compare_id: _compareId, slot } });
+    if (res.error) { _compareStatus(res.error, true); return; }
+    const map = {};
+    (res.reveal || []).forEach(r => { map[r.slot] = r.label; });
+    document.querySelectorAll('#compare-arena .cmp-card').forEach(card => {
+      const s = card.dataset.slot;
+      const head = card.querySelector('.cmp-card-head');
+      const tag = document.createElement('span');
+      tag.className = 'cmp-reveal' + (s === slot ? ' cmp-winner' : '');
+      tag.textContent = (map[s] || '?') + (s === slot ? ' · your pick' : '');
+      head.appendChild(tag);
+      const btn = card.querySelector('.cmp-pick-btn');
+      if (btn) btn.remove();
+      if (s === slot) card.classList.add('cmp-card-won');
+    });
+    _compareStatus(`You picked ${res.winner.label}. Logged to your leaderboard.`);
+    _compareId = null;
+    loadLeaderboard();
+  } catch (e) { _compareStatus('Pick failed: ' + e.message, true); }
+}
+
+async function synthesizeCompare() {
+  if (!_compareId) { _compareStatus('Pick or re-run — synthesis needs a live comparison.', true); return; }
+  const result = document.getElementById('compare-result');
+  result.innerHTML = '<div class="council-step">Chair synthesizing the best of all answers…</div>';
+  try {
+    const res = await api('/api/compare/synthesize', { method: 'POST', body: { compare_id: _compareId } });
+    if (res.error) { result.innerHTML = ''; _compareStatus(res.error, true); return; }
+    result.innerHTML = '<div class="cmp-synth-card"><div class="cmp-synth-title">Synthesis — best of all</div>' +
+      '<div class="cmp-synth-body">' + renderMarkdown(res.synthesis) + '</div></div>';
+  } catch (e) { result.innerHTML = ''; _compareStatus('Synthesis failed: ' + e.message, true); }
+}
+
+async function loadLeaderboard() {
+  const el = document.getElementById('compare-leaderboard');
+  if (!el) return;
+  try {
+    const data = await api('/api/compare/leaderboard');
+    if (!data.rows || !data.rows.length) {
+      el.innerHTML = '<div class="cmp-lb-empty">No comparisons yet — run one above to start ranking models.</div>';
+      return;
+    }
+    const max = Math.max(...data.rows.map(r => r.win_rate), 1);
+    el.innerHTML = `<div class="cmp-lb-total">${data.total} comparison${data.total === 1 ? '' : 's'} judged</div>` +
+      data.rows.map(r =>
+        `<div class="cmp-lb-row">` +
+          `<span class="cmp-lb-name">${escapeHTML(r.label)}</span>` +
+          `<span class="cmp-lb-bar"><span class="cmp-lb-fill" style="width:${Math.round(100 * r.win_rate / max)}%"></span></span>` +
+          `<span class="cmp-lb-stat">${r.win_rate}% · ${r.wins}/${r.appearances}</span>` +
+        `</div>`
+      ).join('');
+  } catch (e) { el.innerHTML = ''; }
+}
+
+function _compareStatus(msg, isErr) {
+  const s = document.getElementById('compare-status');
+  if (s) s.innerHTML = `<div class="council-step${isErr ? ' council-step-err' : ''}">${escapeHTML(msg)}</div>`;
 }
 
 // ============== THE CONSTELLATION ==============

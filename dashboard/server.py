@@ -1319,6 +1319,54 @@ async def council_endpoint(request: Request):
     return {"ok": True, **payload}
 
 
+# --- Compare: blind side-by-side model testing (complements the council) ---
+@app.get("/api/compare/roster")
+async def compare_roster():
+    from agent import council
+    return {"roster": council.roster()}
+
+
+@app.post("/api/compare/run")
+async def compare_run(request: Request):
+    body = await request.json()
+    question = (body.get("question") or "").strip()
+    panel = body.get("panel") or None
+    if not question:
+        return JSONResponse({"error": "empty question"}, status_code=400)
+    from agent import compare
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, lambda: compare.run(question, panel=panel))
+    code = 400 if result.get("error") else 200
+    return JSONResponse(result, status_code=code)
+
+
+@app.post("/api/compare/pick")
+async def compare_pick(request: Request):
+    body = await request.json()
+    compare_id = body.get("compare_id") or ""
+    slot = body.get("slot") or ""
+    note = body.get("note") or ""
+    from agent import compare
+    result = compare.pick(compare_id, slot, note=note)
+    return JSONResponse(result, status_code=400 if result.get("error") else 200)
+
+
+@app.post("/api/compare/synthesize")
+async def compare_synthesize(request: Request):
+    body = await request.json()
+    compare_id = body.get("compare_id") or ""
+    from agent import compare
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, lambda: compare.synthesize(compare_id))
+    return JSONResponse(result, status_code=400 if result.get("error") else 200)
+
+
+@app.get("/api/compare/leaderboard")
+async def compare_leaderboard():
+    from agent import compare
+    return compare.leaderboard()
+
+
 # --- The Constellation: 12 domain-expert planets ---
 @app.get("/api/constellation/roster")
 async def constellation_roster():

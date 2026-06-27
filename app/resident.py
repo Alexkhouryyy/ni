@@ -176,6 +176,7 @@ def run_resident(model_override: Optional[str] = None) -> None:
     from agent import cortex as _cortex_mod; _cortex_mod.init_db()
     from agent import skill_forge as _forge_mod; _forge_mod.init_db()
     from agent import approvals as _appr_mod; _appr_mod.init_db()
+    from agent import compare as _compare_mod; _compare_mod.init_db()
 
     # Scheduler — pass a thin speak that goes through the state machine
     state = ResidentState()

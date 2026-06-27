@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Apex">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/static/icons/favicon-64.png">
-<link rel="stylesheet" href="/static/styles.css?v=omni12">
-<link rel="stylesheet" href="/static/mobile.css?v=omni12">
+<link rel="stylesheet" href="/static/styles.css?v=omni13">
+<link rel="stylesheet" href="/static/mobile.css?v=omni13">
 <script src="/static/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
@@ -44,6 +44,7 @@
     <button data-tab="live" class="nav-btn"><span class="icon">▣</span>Live feed</button>
     <button data-tab="chat" class="nav-btn"><span class="icon">◌</span>Chat</button>
     <button data-tab="council" class="nav-btn"><span class="icon">⚖</span>Council</button>
+    <button data-tab="compare" class="nav-btn"><span class="icon">⚔</span>Compare</button>
     <button data-tab="constellation" class="nav-btn"><span class="icon">✷</span>Constellation</button>
 
     <div class="nav-group-label">Intelligence</div>
@@ -809,6 +810,29 @@
     <div id="council-transcript" class="council-transcript"></div>
   </section>
 
+  <!-- COMPARE — blind side-by-side model testing -->
+  <section id="tab-compare" class="tab">
+    <header class="page-head">
+      <h1>Compare</h1>
+      <div class="page-sub">Ask once — every model answers independently and <strong>blind</strong>. Judge on merit, pick the winner, build your model leaderboard. (The council debates; Compare evaluates.)</div>
+    </header>
+    <form id="compare-form" class="add-form vertical">
+      <textarea id="compare-question" placeholder="Ask a question to put the models head-to-head…" rows="3" required></textarea>
+      <div id="compare-panel" class="council-panel"></div>
+      <div class="council-controls">
+        <button type="submit" id="compare-run" class="primary-btn">Run blind comparison</button>
+        <span class="cmp-hint">Labels stay hidden until you pick.</span>
+      </div>
+    </form>
+    <div id="compare-status" class="council-progress"></div>
+    <div id="compare-arena" class="cmp-arena"></div>
+    <div id="compare-result" class="cmp-result"></div>
+    <div class="cmp-leaderboard-wrap">
+      <h2 class="cmp-lb-title">Model leaderboard <span class="cmp-lb-sub">— your blind preferences over time</span></h2>
+      <div id="compare-leaderboard" class="cmp-leaderboard"></div>
+    </div>
+  </section>
+
   <!-- CONSTELLATION -->
   <section id="tab-constellation" class="tab">
     <header class="page-head">
@@ -894,9 +918,9 @@
   <button class="ib-no" id="install-no">Not now</button>
 </div>
 
-<script src="/static/app.js?v=omni12"></script>
-<script src="/static/voice-mobile.js?v=omni12"></script>
+<script src="/static/app.js?v=omni13"></script>
+<script src="/static/voice-mobile.js?v=omni13"></script>
 <script type="module" src="/static/avatar3d.js?v=vision3"></script>
-<script type="module" src="/static/cst3d.js?v=omni12"></script>
+<script type="module" src="/static/cst3d.js?v=omni13"></script>
 </body>
 </html>
