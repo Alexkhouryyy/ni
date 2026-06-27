@@ -155,3 +155,20 @@ def ai_edit(text: str, instruction: str = "", preset: str = "", max_tokens: int 
     except Exception as e:
         return {"error": f"AI edit failed: {e}"}
     return {"result": result.strip()}
+
+
+def export_to_vault(doc_id: int, folder: str = "Documents") -> dict:
+    """Write a document into the Obsidian vault as a note. Explicit user action,
+    so the write-approval gate is bypassed (the click is the approval)."""
+    d = get(doc_id)
+    if not d:
+        return {"error": "Document not found."}
+    try:
+        from agent import vault
+        status = vault.write_note(
+            d["title"] or "Untitled", d["content"] or "",
+            folder=folder, _bypass_approval=True,
+        )
+    except Exception as e:
+        return {"error": f"Vault export failed: {e}"}
+    return {"ok": True, "status": status}

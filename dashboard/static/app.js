@@ -2267,6 +2267,7 @@ function _wireDocuments() {
   document.getElementById('doc-new')?.addEventListener('click', newDoc);
   document.getElementById('doc-delete')?.addEventListener('click', deleteDoc);
   document.getElementById('doc-preview-toggle')?.addEventListener('click', toggleDocPreview);
+  document.getElementById('doc-to-vault')?.addEventListener('click', exportDocToVault);
 
   const title = document.getElementById('doc-title');
   const body = document.getElementById('doc-body');
@@ -2324,6 +2325,17 @@ async function saveDoc() {
     _docSetSaveState('saved');
     _docRefreshList();
   } catch (_) { _docSetSaveState('unsaved'); }
+}
+
+async function exportDocToVault() {
+  if (_docCurrent == null) return;
+  await saveDoc();  // flush any pending edits first
+  _docSetSaveState('exporting…');
+  try {
+    const res = await api(`/api/documents/${_docCurrent}/to-vault`, { method: 'POST', body: {} });
+    _docSetSaveState(res.error ? ('vault: ' + res.error) : '✓ saved to vault');
+  } catch (e) { _docSetSaveState('vault export failed'); }
+  setTimeout(() => _docSetSaveState('saved'), 2500);
 }
 
 async function deleteDoc() {

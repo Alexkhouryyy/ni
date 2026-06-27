@@ -1461,6 +1461,13 @@ def documents_delete(doc_id: int):
     return {"ok": documents.delete(doc_id)}
 
 
+@app.post("/api/documents/{doc_id}/to-vault")
+def documents_to_vault(doc_id: int):
+    from agent import documents
+    res = documents.export_to_vault(doc_id)
+    return JSONResponse(res, status_code=400 if res.get("error") else 200)
+
+
 @app.post("/api/documents/ai-edit")
 async def documents_ai_edit(request: Request):
     body = await request.json()
