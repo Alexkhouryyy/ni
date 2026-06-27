@@ -170,10 +170,40 @@ def run_resident(model_override: Optional[str] = None) -> None:
     goals.init_db()
     fb_mod.init_db()
     from agent import budget as _budget_mod; _budget_mod.init_db()
+    # Autonomy DBs — required before the cortex/world-model/forge/approvals run.
+    from agent import world_model as _wm_mod; _wm_mod.init_db()
+    from agent import perception as _perc_mod; _perc_mod.init_db()
+    from agent import cortex as _cortex_mod; _cortex_mod.init_db()
+    from agent import skill_forge as _forge_mod; _forge_mod.init_db()
+    from agent import approvals as _appr_mod; _appr_mod.init_db()
 
     # Scheduler — pass a thin speak that goes through the state machine
     state = ResidentState()
     sched.init(agent_run_fn=agent.run, speak_fn=lambda t: _speak_with_state(state, t))
+
+    # Autonomous cortex — BUG FIX: resident mode previously built no AwarenessMonitor,
+    # so the cortex/world-model/Guardian/Time-Capsule never ticked in the always-on
+    # path. Build and start the same wired monitor the interactive path uses.
+    awareness_monitor = None
+    if config.AWARENESS_ENABLED:
+        try:
+            from agent import awareness as _awareness_mod
+            from agent import notify as _notify_ref
+            awareness_monitor = _awareness_mod.build_monitor(
+                agent,
+                speak_fn=lambda t: _speak_with_state(state, t),
+                notify_fn=_notify_ref.notify,
+            )
+            try:
+                reflection.set_awareness_drain(
+                    lambda: awareness_monitor.log.recent(since_seconds=86400)
+                )
+            except Exception:
+                pass
+            awareness_monitor.start()
+            logging.info("Autonomous cortex + awareness monitor started (resident).")
+        except Exception as e:
+            logging.error(f"Awareness monitor failed to start in resident mode: {e}")
 
     # Resident-mode greeting policy: never speak on boot
     logging.info(f"Silent boot: {config.RESIDENT_SILENT_BOOT}")
@@ -387,6 +417,11 @@ def run_resident(model_override: Optional[str] = None) -> None:
             state.shutdown.wait(timeout=1.0)
     finally:
         logging.info("Shutting down resident…")
+        if awareness_monitor is not None:
+            try:
+                awareness_monitor.stop()
+            except Exception:
+                pass
         if wake_listener:
             wake_listener.stop()
         hotkeys.stop()

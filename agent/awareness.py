@@ -360,3 +360,91 @@ class AwarenessMonitor:
                     self.speak(f"Heads up. {observation}")
             except Exception as e:
                 print(f"[Awareness] Review error: {e}")
+
+
+def build_monitor(agent, speak_fn, notify_fn=None):
+    """Construct a fully-wired AwarenessMonitor (Guardian + Time Capsule + World
+    Model + autonomous Cortex), ready to .start().
+
+    Shared by the interactive (`main.py`) and always-on (`app/resident.py`) entry
+    points so the autonomous cortex runs in BOTH — previously resident mode built
+    no monitor at all, so the cortex/world-model/Guardian/Time-Capsule never ticked.
+
+    Caller is responsible for having initialised the relevant DBs (cortex, world
+    model, perception, skill_forge, approvals). Returns the monitor, NOT started.
+    """
+    from agent import telemetry
+    from agent import cortex as _cortex_mod, skill_forge as _forge_mod
+
+    def _proactive_check(events_summary: str):
+        try:
+            resp = telemetry.create(
+                agent.anthropic,
+                call_site="agent.awareness/review",
+                model=config.PROACTIVE_MODEL,
+                max_tokens=200,
+                messages=[{"role": "user", "content": (
+                    "You watch the user's desktop in the background. "
+                    "Recent events (last ~90s):\n\n" + events_summary + "\n\n"
+                    "Is there anything URGENT or genuinely useful to proactively bring up RIGHT NOW? "
+                    "Examples that warrant interrupting: an error in their work, a security concern, "
+                    "they look stuck on something obvious you could help with, an opportunity they'll miss. "
+                    "Examples that DON'T: normal app switching, routine copy-paste, mundane file edits. "
+                    "If YES, respond with a single short observation (1 sentence). "
+                    "If NO, respond with exactly: NO"
+                )}],
+            )
+            text = resp.content[0].text.strip()
+            return None if text.upper().startswith("NO") else text
+        except Exception:
+            return None
+
+    watch_paths = [os.path.expanduser(p) for p in config.AWARENESS_WATCH_PATHS]
+    monitor = AwarenessMonitor(
+        agent_proactive_check=_proactive_check,
+        speak_fn=speak_fn,
+        watch_paths=watch_paths,
+        review_interval=config.AWARENESS_REVIEW_INTERVAL,
+    )
+
+    # Guardian Angel + Time Capsule (best-effort; never fatal)
+    if getattr(config, "GUARDIAN_ANGEL_ENABLED", True):
+        try:
+            from agent.guardian import GuardianAngel
+            from agent import longterm as _lt
+
+            def _recall_for_guardian(query: str, limit: int) -> str:
+                try:
+                    results = _lt.recall(query, limit=limit, semantic=True)
+                    return "\n".join(r.get("content", "") for r in results if r.get("content"))
+                except Exception:
+                    return ""
+
+            monitor.guardian = GuardianAngel(
+                speak_fn=speak_fn,
+                tray_notify_fn=lambda _t, _m: None,
+                recall_fn=_recall_for_guardian,
+            )
+            if getattr(config, "TIME_CAPSULE_ENABLED", True):
+                from agent.timecapsule import TimeCapsule, _init_table
+                _init_table()
+                monitor.timecapsule = TimeCapsule(
+                    speak_fn=speak_fn,
+                    tray_notify_fn=lambda _t, _m: None,
+                )
+        except Exception as e:
+            print(f"[Awareness] Guardian/TimeCapsule wiring skipped: {e}")
+
+    # World Model + autonomous Cortex
+    monitor.world_model_client = agent.anthropic
+    monitor.cortex = _cortex_mod
+    if notify_fn is not None:
+        try:
+            _cortex_mod.set_notify_fn(notify_fn)
+            _forge_mod.set_notify_fn(notify_fn)
+            from agent import approvals as _appr_mod
+            _appr_mod.set_notify_fn(notify_fn)
+        except Exception:
+            pass
+    print("[Cortex] Autonomous cortex wired into monitor.")
+    return monitor

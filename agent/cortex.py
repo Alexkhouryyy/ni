@@ -134,7 +134,13 @@ def _execute_tool(tool: str, inputs: dict) -> str:
             res = sandbox.get_backend().run_python(code, timeout=10)
             return (res["stdout"] + res["stderr"])[:500]
         else:
-            return f"[cortex] no executor for {tool!r}"
+            # Confirm-tier tools (write_file, bash, send_email, sms_send, browser_*)
+            # have no read-only executor here. Once the user has APPROVED the staged
+            # action, run it through the agent's real tool dispatcher — which also
+            # applies the safety pattern gate as defense-in-depth. Previously this
+            # returned "[cortex] no executor", so approving a staged action did nothing.
+            from agent.core import _execute_tool as _real_execute
+            return _real_execute(tool, inputs)
     except Exception as e:
         return f"[cortex] {tool} failed: {e}"
 

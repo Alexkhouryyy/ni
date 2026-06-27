@@ -237,86 +237,13 @@ def main():
 
     # Awareness monitor (replaces old screenshot-only proactive)
     if config.AWARENESS_ENABLED:
-        from agent.awareness import AwarenessMonitor
-
-        def _awareness_proactive_check(events_summary: str):
-            """Lightweight Haiku call: decide if events warrant interrupting."""
-            try:
-                resp = telemetry.create(
-                    agent.anthropic,
-                    call_site="agent.awareness/review",
-                    model=config.PROACTIVE_MODEL,
-                    max_tokens=200,
-                    messages=[{"role": "user", "content": (
-                        "You watch the user's desktop in the background. "
-                        "Recent events (last ~90s):\n\n" + events_summary + "\n\n"
-                        "Is there anything URGENT or genuinely useful to proactively bring up RIGHT NOW? "
-                        "Examples that warrant interrupting: an error in their work, a security concern, "
-                        "they look stuck on something obvious you could help with, an opportunity they'll miss. "
-                        "Examples that DON'T: normal app switching, routine copy-paste, mundane file edits. "
-                        "If YES, respond with a single short observation (1 sentence). "
-                        "If NO, respond with exactly: NO"
-                    )}],
-                )
-                text = resp.content[0].text.strip()
-                return None if text.upper().startswith("NO") else text
-            except Exception:
-                return None
-
-        awareness_paths = [os.path.expanduser(p) for p in config.AWARENESS_WATCH_PATHS]
-        monitor = AwarenessMonitor(
-            agent_proactive_check=_awareness_proactive_check,
-            speak_fn=speak,
-            watch_paths=awareness_paths,
-            review_interval=config.AWARENESS_REVIEW_INTERVAL,
+        # Built via the shared helper so the interactive and always-on (resident)
+        # paths wire the autonomous cortex identically and cannot drift apart.
+        from agent import awareness as _awareness_mod
+        from agent import notify as _notify_ref
+        monitor = _awareness_mod.build_monitor(
+            agent, speak_fn=speak, notify_fn=_notify_ref.notify
         )
-
-        # Wire Guardian Angel — decision-moment detection with mini-council
-        if getattr(config, "GUARDIAN_ANGEL_ENABLED", True):
-            from agent.guardian import GuardianAngel
-            from agent import longterm as _lt
-
-            def _recall_for_guardian(query: str, limit: int) -> str:
-                try:
-                    results = _lt.recall(query, limit=limit, semantic=True)
-                    return "\n".join(r.get("content", "") for r in results if r.get("content"))
-                except Exception:
-                    return ""
-
-            def _tray_notify_fn(title: str, message: str) -> None:
-                # In resident mode the tray object is available; elsewhere print
-                pass  # replaced in resident path; text-mode falls back to print below
-
-            guardian = GuardianAngel(
-                speak_fn=speak,
-                tray_notify_fn=_tray_notify_fn,
-                recall_fn=_recall_for_guardian,
-            )
-            monitor.guardian = guardian
-            print("[Guardian] Guardian Angel active.")
-
-            # Wire Time Capsule — long-horizon memory, reuses the same speak/tray fns
-            if getattr(config, "TIME_CAPSULE_ENABLED", True):
-                from agent.timecapsule import TimeCapsule, _init_table
-                _init_table()
-                monitor.timecapsule = TimeCapsule(
-                    speak_fn=speak,
-                    tray_notify_fn=_tray_notify_fn,
-                )
-                print("[TimeCapsule] Time Capsule active.")
-
-        # Wire World Model + Autonomous Cortex
-        monitor.world_model_client = agent.anthropic
-        monitor.cortex = _cortex_mod
-        # Give cortex access to notify so it can push phone notifications
-        try:
-            from agent import notify as _notify_ref
-            _cortex_mod.set_notify_fn(_notify_ref.notify)
-            _forge_mod.set_notify_fn(_notify_ref.notify)
-            from agent import approvals as _appr_mod
-            _appr_mod.set_notify_fn(_notify_ref.notify)
-        except Exception:
-            pass
         print("[Cortex] Autonomous cortex active (trusted allowlist mode).")
         print("[SkillForge] Skill forge active.")
     else:

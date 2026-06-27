@@ -6,6 +6,7 @@ execution runs the agent with the stored prompt and speaks the result aloud.
 import json
 import time
 import threading
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -14,6 +15,10 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
 
 from agent import longterm
+
+# How long after a scheduled time a fire may still run (e.g. the host was briefly
+# busy). Across a full restart we additionally do explicit catch-up in _restore_tasks.
+_MISFIRE_GRACE_SECONDS = 3600
 
 _scheduler: Optional[BackgroundScheduler] = None
 _agent_run_fn: Optional[Callable] = None
@@ -42,7 +47,10 @@ def init(agent_run_fn: Callable, speak_fn: Callable) -> None:
             )
         """)
 
-    _scheduler = BackgroundScheduler(timezone="UTC")
+    _scheduler = BackgroundScheduler(
+        timezone="UTC",
+        job_defaults={"coalesce": True, "misfire_grace_time": _MISFIRE_GRACE_SECONDS},
+    )
     _scheduler.start()
     _restore_tasks()
     print(f"[Scheduler] Started. {len(list_tasks())} tasks loaded.")
@@ -106,13 +114,13 @@ def cancel(task_id: str) -> str:
 def list_tasks() -> list[dict]:
     with longterm._conn() as c:
         rows = c.execute(
-            "SELECT id, description, trigger_type, trigger_params, enabled, last_run, run_count FROM scheduled_tasks"
+            "SELECT id, description, trigger_type, trigger_params, enabled, last_run, run_count, created_at FROM scheduled_tasks"
         ).fetchall()
     return [
         {
             "id": r[0], "description": r[1], "trigger_type": r[2],
             "trigger_params": json.loads(r[3]), "enabled": bool(r[4]),
-            "last_run": r[5], "run_count": r[6],
+            "last_run": r[5], "run_count": r[6], "created_at": r[7],
         }
         for r in rows
     ]
@@ -165,19 +173,63 @@ def _make_trigger(trigger_type: str, params: dict):
     return None
 
 
+def _fire_was_missed(trigger, baseline_ts: Optional[float], now_dt: datetime) -> bool:
+    """True if a scheduled fire came due between ``baseline_ts`` and now.
+
+    The in-memory jobstore recomputes next_run_time fresh on restart, so a fire
+    that was due while the process was down would otherwise be silently skipped.
+    We detect it from the persisted ``last_run`` (or ``created_at``) baseline.
+    """
+    try:
+        baseline = (
+            datetime.fromtimestamp(baseline_ts, tz=timezone.utc)
+            if baseline_ts else None
+        )
+        # Next fire strictly after the baseline; if it's already <= now, we missed it.
+        nxt = trigger.get_next_fire_time(None, baseline or now_dt)
+        return nxt is not None and nxt <= now_dt
+    except Exception:
+        return False
+
+
 def _restore_tasks() -> None:
+    now_dt = datetime.now(timezone.utc)
     for task in list_tasks():
         if not task["enabled"]:
             continue
         trigger = _make_trigger(task["trigger_type"], task["trigger_params"])
-        if trigger:
+        if not trigger:
+            continue
+        # Catch-up: if a fire came due while we were down, run it once now (coalesced).
+        baseline = task.get("last_run") or task.get("created_at")
+        did_catchup = False
+        if _fire_was_missed(trigger, baseline, now_dt):
             try:
                 _scheduler.add_job(
                     _fire_task,
-                    trigger=trigger,
-                    id=task["id"],
+                    trigger="date",
+                    run_date=now_dt,
+                    id=f"{task['id']}_catchup",
                     args=[task["id"], task["description"]],
                     replace_existing=True,
+                    misfire_grace_time=_MISFIRE_GRACE_SECONDS,
                 )
+                did_catchup = True
+                print(f"[Scheduler] Catch-up scheduled for missed task {task['id']!r}.")
             except Exception as e:
-                print(f"[Scheduler] Could not restore {task['id']}: {e}")
+                print(f"[Scheduler] Catch-up failed for {task['id']}: {e}")
+        # A one-off 'date' task that already missed is fully satisfied by the catch-up;
+        # re-adding the past-date job would double-fire it.
+        if task["trigger_type"] == "date" and did_catchup:
+            continue
+        # Normal future schedule.
+        try:
+            _scheduler.add_job(
+                _fire_task,
+                trigger=trigger,
+                id=task["id"],
+                args=[task["id"], task["description"]],
+                replace_existing=True,
+            )
+        except Exception as e:
+            print(f"[Scheduler] Could not restore {task['id']}: {e}")
